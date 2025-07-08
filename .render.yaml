@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ai-growify
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run main_dashboard.py --server.port=$PORT --server.address=0.0.0.0
+    headers:
+      - source: /.*
+        headers:
+          - key: Cache-Control
+            value: no-store

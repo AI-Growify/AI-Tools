@@ -1,0 +1,50 @@
+# === CORE ===
+streamlit==1.45.1
+python-dotenv==1.1.0
+pandas==2.2.3
+requests==2.29.0
+beautifulsoup4==4.12.3
+lxml>=4.9.0
+tldextract==5.1.1
+colorama==0.4.6
+python-dateutil==2.9.0.post0
+typing_extensions==4.13.2
+tqdm==4.67.1
+aiohttp==3.9.5
+openpyxl>=3.1.2
+onnxruntime==1.22.0
+
+# === AI / NLP ===
+yake==0.4.8
+google-generativeai==0.3.2
+openai==1.23.6
+
+# === IMAGE PROCESSING ===
+opencv-python-headless==4.11.0.86
+Pillow==11.2.1
+rembg==2.0.66
+torch==2.7.0
+torchvision==0.22.0
+ultralytics==8.3.145
+ultralytics-thop==2.0.14
+
+# === SCRAPER / CRAWLER ===
+selenium==4.20.0
+selenium-stealth==1.0.6
+apify-client==1.3.0
+undetected-chromedriver==3.5.5
+
+# === SEO / PDF ===
+markdown2==2.4.13
+xhtml2pdf==0.2.15
+textstat==0.7.3
+
+# === SCIKIT / MATH ===
+scikit-learn>=1.3.2
+scikit-image==0.25.2
+scipy==1.15.3
+
+# === OTHER ===
+protobuf==4.25.3
+pyrebase4==4.7.1
+firebase-admin==6.2.0

@@ -1,12 +1,21 @@
 services:
   - type: web
-    name: growify-ai
+    name: seo-auditor
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: >
-      Xvfb :99 -screen 0 1024x768x24 &
-      export DISPLAY=:99 &&
-      streamlit run main_dashboard.py
+    startCommand: streamlit run main1.py
+    runtime: python
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.13
+      - key: GEMINI_API_KEY
+        value: your_actual_api_key_here
+    build:
+      aptPackages:
+        - xvfb
+        - chromium-browser
+        - chromium-chromedriver
+        - libglib2.0-0
+        - libsm6
+        - libxrender1
+        - libxext6
+        - libgl1-mesa-glx

@@ -98,6 +98,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             return result
 
         soup = BeautifulSoup(html, "html.parser")
+        anchor_tags = soup.find_all("a", href=True)  # ✅ FIXED: moved to top
         parsed_url = urlparse(url)
 
         # --- Meta Data ---
@@ -140,7 +141,8 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
         result["H1_content"] = h1_text
         if h1_text and title_text and h1_text.strip().lower() == title_text.strip().lower():
             result["h1_title_duplicate"] = True
-        # --- External (outbound) broken link check ---
+
+        # --- External Broken Links ---
         external_broken_links = []
         for a in anchor_tags:
             href = a.get("href")
@@ -162,11 +164,10 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
                         "error": str(e)
                     })
 
-        result["external_broken_links"] = external_broken_links     
+        result["external_broken_links"] = external_broken_links
 
         # Text Stats
         total_words = len(re.findall(r'\b\w+\b', page_text))
-        anchor_tags = soup.find_all("a", href=True)
         anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
         anchor_words = sum(len(a.split()) for a in anchor_texts)
 
@@ -208,6 +209,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
         }
 
+        # Images
         images = soup.find_all("img")
         broken_images = []
         for img in images[:10]:
@@ -228,6 +230,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             "broken_images": broken_images
         }
 
+        # Robots.txt
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
@@ -264,6 +267,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
         result["error"] = str(e)
 
     return result
+
 
 
 

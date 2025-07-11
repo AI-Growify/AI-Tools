@@ -46,34 +46,29 @@ def get_rendered_html(url):
         import os
 
         options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"  # REQUIRED on Render
+        options.binary_location = "/usr/bin/chromium-browser"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
 
-        print("🔍 chrome path:", shutil.which("chromium-browser"))
-        print("✅ DISPLAY:", os.environ.get("DISPLAY"))
+        print("🔍 Chromium path:", shutil.which("chromium-browser"))
+        print("🖥️ DISPLAY:", os.environ.get("DISPLAY"))
 
         driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(30)
+        driver.set_page_load_timeout(60)
         driver.get(url)
 
-        time.sleep(5)
+        # Scroll to bottom to trigger JS rendering
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(8)  # 👈 increase this if needed
+
         html = driver.page_source
         driver.quit()
-        print(f"✅ Rendered: {url}")
         return html
 
     except Exception as e:
-        print(f"❌ Selenium error: {e}")
         return f"❌ Failed to render page using Selenium: {e}"
 
-
-    except Exception as e:
-        error_message = f"❌ Failed to render page using Selenium: {e}"
-        print(error_message)
-        return error_message  # Return the error string for logging in the report
 
 
 def extract_internal_links(html, base_url):

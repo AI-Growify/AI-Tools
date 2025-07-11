@@ -42,30 +42,41 @@ def get_rendered_html(url):
     try:
         import undetected_chromedriver as uc
         from selenium.webdriver.chrome.options import Options
+        import shutil
+        import os
 
         options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"  # ✅ Add this
-        options.add_argument("--headless")
+        options.binary_location = "/usr/bin/chromium-browser"  # ✅ Required for Render
+
+        # ✅ Headless settings
+        options.add_argument("--headless=new")  # use 'new' headless mode for stability
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
 
+        # ✅ Debug logs for Render
+        print("🔍 Chrome location:", shutil.which("chromium-browser"))
+        print("✅ DISPLAY env var:", os.environ.get("DISPLAY"))
+
+        # Launch browser
         driver = uc.Chrome(options=options)
         driver.set_page_load_timeout(30)
         driver.get(url)
 
-        time.sleep(5)
+        time.sleep(5)  # Allow JS to load
         html = driver.page_source
         driver.quit()
 
-        print(f"✅ Rendered using headless Chrome: {url}")
+        print(f"✅ Successfully rendered: {url}")
         return html
 
     except Exception as e:
-        print(f"❌ Failed to render page using Selenium: {e}")
-        return None
+        error_message = f"❌ Failed to render page using Selenium: {e}"
+        print(error_message)
+        return error_message  # Return the error string for logging in the report
+
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")

@@ -1,5 +1,5 @@
 import streamlit as st
-from helpers import ai_analysis, display_wrapped_json, full_seo_audit, get_rendered_html
+from helpers import ai_analysis, display_wrapped_json, full_seo_audit, get_rendered_html, should_skip_url
 from urllib.parse import urlparse, urljoin, urlunparse
 from bs4 import BeautifulSoup
 import requests
@@ -125,75 +125,99 @@ def compute_sitewide_metrics(seo_data):
 
 
 # --- Crawler Function ---
-def crawl_entire_site(start_url: str, max_pages: int | None = None):
-    visited, queue, all_reports = set(), [start_url], []
+def crawl_entire_site(start_url, max_pages=None):
+    from selenium.common.exceptions import TimeoutException
+    import undetected_chromedriver as uc
+
+    visited = set()
+    queue = [start_url]
+    all_reports = []
     total_to_crawl = 1
-
     progress_bar = st.progress(0)
-    status_text  = st.empty()
+    status_text = st.empty()
 
-    # duplicate trackers
-    titles_seen, descs_seen, content_hashes_seen = set(), set(), set()
+    titles_seen = set()
+    descs_seen = set()
+    content_hashes_seen = set()
 
-    while queue:
-        if max_pages and len(visited) >= max_pages:
-            break
+    # ✅ Define retry-safe page loader
+    def safe_get(driver, url, retries=2, wait=1.5):
+        for attempt in range(retries):
+            try:
+                driver.get(url)
+                time.sleep(wait)
+                return driver.page_source
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise e
+                time.sleep(2)
+        return None
 
-        current_index = total_to_crawl - len(queue)
-        current_url   = queue.pop(0)
-        norm_current  = normalize_url(current_url)
+    # ✅ Launch browser ONCE
+    options = uc.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-infobars")
 
-        if norm_current in visited:
-            continue
+    driver = uc.Chrome(options=options)
+    driver.set_page_load_timeout(30)
 
-        status_text.text(f"🔍 Auditing {current_url} "
-                         f"({current_index + 1} / ≈{total_to_crawl})")
+    try:
+        while queue:
+            if max_pages and len(visited) >= max_pages:
+                break
 
-        try:
-            html = get_rendered_html(current_url)
-            if not html:
-                all_reports.append({"url": current_url,
-                                    "report": {"error": "Could not render page"}})
+            current_index = total_to_crawl - len(queue)
+            current_url = queue.pop(0)
+            normalized_current = normalize_url(current_url)
+
+            if normalized_current in visited or should_skip_url(normalized_current):
                 continue
 
-            print(f"📄 Crawled {current_url}  |  {len(html)} bytes")
 
-            soup = BeautifulSoup(html, "html.parser")
-            visited.add(norm_current)
+            status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 
-            report = full_seo_audit(current_url,
-                                    titles_seen,
-                                    descs_seen,
-                                    content_hashes_seen,
-                                    html)
-            all_reports.append({"url": current_url, "report": report})
-
-            # enqueue internal links
-            base_netloc = urlparse(start_url).netloc.replace("www.", "")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if not is_valid_link(href):
+            try:
+                html = safe_get(driver, current_url)
+                if not html:
+                    all_reports.append({"url": current_url, "report": {"error": f"Could not render page: {current_url}"}})
                     continue
-                full   = urljoin(current_url, href)
-                norm   = normalize_url(full)
-                netloc = urlparse(norm).netloc.replace("www.", "")
 
-                if netloc == base_netloc and norm not in visited and norm not in queue:
-                    queue.append(norm)
-                    total_to_crawl += 1
-                    print("  ↪️  queued", norm)
+                soup = BeautifulSoup(html, "html.parser")
+                visited.add(normalized_current)
 
-            progress_bar.progress((current_index + 1) / total_to_crawl)
-            time.sleep(0.3)
+                report = full_seo_audit(current_url, titles_seen, descs_seen, content_hashes_seen, html)
+                all_reports.append({"url": current_url, "report": report})
 
-        except Exception as e:
-            all_reports.append({"url": current_url, "error": str(e)})
-            print(f"⚠️ Error on {current_url}: {e}")
+                base = urlparse(start_url).netloc
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if not is_valid_link(href):
+                        continue
+                    full_url = urljoin(current_url, href)
+                    normalized_url = normalize_url(full_url)
+                    if urlparse(normalized_url).netloc == base and normalized_url not in visited and normalized_url not in queue:
+                        queue.append(normalized_url)
+                        total_to_crawl += 1
+
+                progress_bar.progress((current_index + 1) / total_to_crawl)
+
+            except TimeoutException:
+                all_reports.append({"url": current_url, "report": {"error": "⏰ Timeout loading the page."}})
+            except Exception as e:
+                all_reports.append({"url": current_url, "report": {"error": str(e)}})
+
+    finally:
+        driver.quit()
 
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
-    
+
+
 # --- Streamlit App ---
 def main():
     st.title("Full-Site SEO Auditor")
@@ -233,6 +257,9 @@ def main():
     start_url = st.text_input("Enter the homepage URL (e.g., https://example.com)")
     st.caption("This will crawl all internal pages and analyze them.")
 
+    # ✅ NEW: Limit checkbox
+    limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
+
     if st.button("Start Full Site Audit"):
         if not start_url:
             st.warning("Please enter a valid URL.")
@@ -241,7 +268,8 @@ def main():
             start_url = "https://" + start_url.strip()
 
         with st.spinner("Crawling and analyzing site..."):
-            full_report = crawl_entire_site(start_url)
+            max_pages = 200 if limit_pages else None
+            full_report = crawl_entire_site(start_url, max_pages=max_pages)
             st.session_state["seo_data"] = full_report
             st.session_state["ai_summary"] = None
             st.session_state["ai_summary_time"] = None
@@ -287,4 +315,4 @@ def main():
             )
 
 if __name__ == "__main__":
-    main()  
+    main()

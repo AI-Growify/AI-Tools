@@ -43,21 +43,20 @@ def get_rendered_html(url):
         import undetected_chromedriver as uc
         from selenium.webdriver.chrome.options import Options
 
-        # Set Chrome options for headless rendering
         options = uc.ChromeOptions()
-        options.add_argument("--headless")  # Run headless
-        options.add_argument("--no-sandbox")  # Disable sandbox for Render
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        options.binary_location = "/usr/bin/chromium-browser"  # ✅ Add this
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
 
-        # Launch the browser
         driver = uc.Chrome(options=options)
         driver.set_page_load_timeout(30)
         driver.get(url)
 
-        time.sleep(5)  # Wait for JavaScript to load
+        time.sleep(5)
         html = driver.page_source
         driver.quit()
 

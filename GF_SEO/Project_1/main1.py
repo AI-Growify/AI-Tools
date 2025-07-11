@@ -154,14 +154,20 @@ def crawl_entire_site(start_url, max_pages=None):
         return None
 
     # ✅ Launch browser ONCE
-    options = uc.ChromeOptions()
+    ooptions = uc.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-infobars")
-
+    
+    # ✅ Add this block
+    if os.path.exists("/usr/bin/chromium-browser"):
+        options.binary_location = "/usr/bin/chromium-browser"
+    else:
+        options.binary_location = "/usr/bin/chromium"
+    
     driver = uc.Chrome(options=options)
     driver.set_page_load_timeout(30)
 

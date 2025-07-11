@@ -37,36 +37,36 @@ def display_wrapped_json(data, width=80):
             return item
     wrapped_data = process_item(data)
     st.code(json.dumps(wrapped_data, indent=2), language='json')
+    
+def should_skip_url(url):
+    skip_keywords = ["/cart", "/checkout", "/login", "/account", "/my-account"]
+    if any(kw in url.lower() for kw in skip_keywords):
+        return True
+    if "?" in url:  # Skip paginated, sorted, filtered variants
+        return True
+    return False
 
-def get_rendered_html(url):
+def get_rendered_html(url, driver=None):
     try:
-        import undetected_chromedriver as uc
-        from selenium.webdriver.chrome.options import Options
+        if driver is None:
+            options = uc.ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-infobars")
+            driver = uc.Chrome(options=options)
 
-        # Set Chrome options for headless rendering
-        options = uc.ChromeOptions()
-        options.add_argument("--headless")  # Run headless
-        options.add_argument("--no-sandbox")  # Disable sandbox for Render
-        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-infobars")
-
-        # Launch the browser
-        driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(30)
         driver.get(url)
-
-        time.sleep(5)  # Wait for JavaScript to load
+        time.sleep(2)  # Reduce wait
         html = driver.page_source
-        driver.quit()
-
-        print(f"✅ Rendered using headless Chrome: {url}")
         return html
 
     except Exception as e:
-        print(f"❌ Failed to render page using Selenium: {e}")
+        print(f"❌ Failed to render: {e}")
         return None
+
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")

@@ -46,31 +46,29 @@ def get_rendered_html(url):
         import os
 
         options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"  # ✅ Required for Render
-
-        # ✅ Headless settings
-        options.add_argument("--headless=new")  # use 'new' headless mode for stability
+        options.binary_location = "/usr/bin/chromium-browser"  # REQUIRED on Render
+        options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-infobars")
 
-        # ✅ Debug logs for Render
-        print("🔍 Chrome location:", shutil.which("chromium-browser"))
-        print("✅ DISPLAY env var:", os.environ.get("DISPLAY"))
+        print("🔍 chrome path:", shutil.which("chromium-browser"))
+        print("✅ DISPLAY:", os.environ.get("DISPLAY"))
 
-        # Launch browser
         driver = uc.Chrome(options=options)
         driver.set_page_load_timeout(30)
         driver.get(url)
 
-        time.sleep(5)  # Allow JS to load
+        time.sleep(5)
         html = driver.page_source
         driver.quit()
-
-        print(f"✅ Successfully rendered: {url}")
+        print(f"✅ Rendered: {url}")
         return html
+
+    except Exception as e:
+        print(f"❌ Selenium error: {e}")
+        return f"❌ Failed to render page using Selenium: {e}"
+
 
     except Exception as e:
         error_message = f"❌ Failed to render page using Selenium: {e}"

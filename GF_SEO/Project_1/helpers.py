@@ -38,65 +38,35 @@ def display_wrapped_json(data, width=80):
     wrapped_data = process_item(data)
     st.code(json.dumps(wrapped_data, indent=2), language='json')
 
-def get_rendered_html(url: str) -> str | None:
-    """
-    Fully render a page (incl. JavaScript) under Render's headless environment.
-    Returns HTML or None if rendering clearly failed.
-    """
+def get_rendered_html(url):
     try:
         import undetected_chromedriver as uc
         from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        import shutil, os, time
 
-        # ── Chrome options tailored for Render
-        opts = uc.ChromeOptions()
-        opts.binary_location = "/usr/bin/chromium-browser"     # ← mandatory on Render
-        opts.add_argument("--headless=new")                    # new headless mode
-        opts.add_argument("--no-sandbox")
-        opts.add_argument("--disable-dev-shm-usage")
-        opts.add_argument("--disable-gpu")
-        opts.add_argument("--disable-extensions")
-        opts.add_argument("--disable-infobars")
+        # Set Chrome options for headless rendering
+        options = uc.ChromeOptions()
+        options.add_argument("--headless")  # Run headless
+        options.add_argument("--no-sandbox")  # Disable sandbox for Render
+        options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-infobars")
 
-        # ── Helpful log lines (appear in Render logs)
-        print("🔍 chromium-browser =", shutil.which("chromium-browser"))
-        print("🖥  DISPLAY         =", os.environ.get("DISPLAY"))
-
-        driver = uc.Chrome(options=opts)
-        driver.set_page_load_timeout(60)
+        # Launch the browser
+        driver = uc.Chrome(options=options)
+        driver.set_page_load_timeout(30)
         driver.get(url)
 
-        # ── Scroll a few times to trigger lazy content
-        for _ in range(3):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3)
-
-        # ── Wait up to 15 s for <body> (or swap in a specific CSS selector)
-        try:
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-        except Exception as wait_err:
-            print(f"⚠️ Timed out waiting for DOM on {url}: {wait_err}")
-
+        time.sleep(5)  # Wait for JavaScript to load
         html = driver.page_source
         driver.quit()
 
-        # ── Sanity‑check content size
-        if len(html) < 1000:
-            print(f"⚠️ Rendered HTML only {len(html)} bytes (likely blocked or no JS)")
-            return None
-
-        print(f"✅ Rendered {url} | {len(html)} bytes")
+        print(f"✅ Rendered using headless Chrome: {url}")
         return html
 
     except Exception as e:
-        print(f"❌ Failed to render {url}: {e}")
+        print(f"❌ Failed to render page using Selenium: {e}")
         return None
-
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")

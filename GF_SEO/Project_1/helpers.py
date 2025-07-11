@@ -42,34 +42,29 @@ def get_rendered_html(url):
     try:
         import undetected_chromedriver as uc
         from selenium.webdriver.chrome.options import Options
-        import shutil
-        import os
 
         options = uc.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium-browser"
-        options.add_argument("--headless=new")
+        options.binary_location = "/usr/bin/chromium-browser"  # 🔑 Important on Render
+        options.add_argument("--headless=new")  # New headless mode
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-
-        print("🔍 Chromium path:", shutil.which("chromium-browser"))
-        print("🖥️ DISPLAY:", os.environ.get("DISPLAY"))
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-infobars")
 
         driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(60)
+        driver.set_page_load_timeout(30)
         driver.get(url)
 
-        # Scroll to bottom to trigger JS rendering
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(8)  # 👈 increase this if needed
-
+        time.sleep(6)  # Give JS time to load
         html = driver.page_source
         driver.quit()
+
         return html
 
     except Exception as e:
-        return f"❌ Failed to render page using Selenium: {e}"
-
-
+        print(f"❌ Failed to render: {e}")
+        return None
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
@@ -88,9 +83,8 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
     internal_errors = []
 
     try:
-        if not html or len(html) < 1000:
-            result["error"] = f"Page likely failed JS render or is too small ({len(html)} bytes)"
-            print(f"⚠️ HTML too small or empty for {url}")
+        if not html:
+            result["error"] = f"Could not render page: {url}"
             return result
 
         soup = BeautifulSoup(html, "html.parser")
@@ -103,8 +97,6 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
 
         title_text = title_tag.text.strip() if title_tag else ""
         desc_text = desc_tag["content"].strip() if desc_tag and desc_tag.get("content") else ""
-
-        print(f"📄 {url} → title: '{title_text}' | desc: '{desc_text}'")
 
         result["title"] = {
             "text": title_text or "Missing",
@@ -139,8 +131,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
         result["H1_content"] = h1_text
         if h1_text and title_text and h1_text.strip().lower() == title_text.strip().lower():
             result["h1_title_duplicate"] = True
-
-        # --- External Broken Links ---
+        # --- External (outbound) broken link check ---
         external_broken_links = []
         for a in anchor_tags:
             href = a.get("href")
@@ -152,13 +143,21 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
                 try:
                     resp = requests.head(full_url, timeout=5, allow_redirects=True)
                     if resp.status_code >= 400:
-                        external_broken_links.append({"url": full_url, "status": resp.status_code})
+                        external_broken_links.append({
+                            "url": full_url,
+                            "status": resp.status_code
+                        })
                 except Exception as e:
-                    external_broken_links.append({"url": full_url, "error": str(e)})
-        result["external_broken_links"] = external_broken_links
+                    external_broken_links.append({
+                        "url": full_url,
+                        "error": str(e)
+                    })
 
-        # --- Word Stats ---
+        result["external_broken_links"] = external_broken_links     
+
+        # Text Stats
         total_words = len(re.findall(r'\b\w+\b', page_text))
+        anchor_tags = soup.find_all("a", href=True)
         anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
         anchor_words = sum(len(a.split()) for a in anchor_texts)
 
@@ -168,45 +167,41 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             "anchor_ratio_percent": round((anchor_words / total_words) * 100, 2) if total_words else 0,
             "sample_anchors": anchor_texts[:10]
         }
+
         result["empty_anchor_text_links"] = sum(1 for a in anchor_tags if not a.get_text(strip=True))
 
         non_descriptive_phrases = {"click here", "read more", "learn more", "more", "here", "view"}
-        result["non_descriptive_anchors"] = sum(1 for a in anchor_texts if a.lower() in non_descriptive_phrases)
+        result["non_descriptive_anchors"] = sum(
+            1 for a in anchor_texts if a.lower() in non_descriptive_phrases
+        )
 
-        # --- HTTPS + URL structure checks ---
+        # HTTPS check
         result["https_info"] = {
             "using_https": url.startswith("https://"),
-            "was_redirected": False  # Placeholder, enhance if needed
+            "was_redirected": False
         }
 
         if len(anchor_tags) <= 1:
             result["single_internal_link"] = True
 
-        http_links = [
-            urljoin(url, a["href"])
-            for a in anchor_tags
-            if url.startswith("https://") and urljoin(url, a["href"]).startswith("http://")
-        ]
+        http_links = [urljoin(url, a["href"]) for a in anchor_tags if url.startswith("https://") and urljoin(url, a["href"]).startswith("http://")]
         if http_links:
             result["http_links_on_https"] = http_links
 
         if parsed_url.query:
             result["url_has_parameters"] = True
 
-        # --- Content ratio ---
         html_size = len(html)
         result["text_to_html_ratio_percent"] = round((len(page_text) / html_size) * 100, 2) if html_size else 0
 
-        # --- Schema detection ---
         result["schema"] = {
             "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
             "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
         }
 
-        # --- Image Checks ---
         images = soup.find_all("img")
         broken_images = []
-        for img in images[:10]:  # Only check first few to limit load
+        for img in images[:10]:
             src = img.get("src")
             if src:
                 img_url = urljoin(url, src)
@@ -224,23 +219,23 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             "broken_images": broken_images
         }
 
-        # --- Robots.txt ---
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
-            disallows = [
-                line.strip() for line in robots_response.text.splitlines()
-                if line.lower().startswith("disallow")
-            ]
-            result["robots_txt"] = {"found": True, "disallows": disallows}
+            disallows = [line.strip() for line in robots_response.text.splitlines() if line.lower().startswith("disallow")]
+            result["robots_txt"] = {
+                "found": True,
+                "disallows": disallows
+            }
         except:
-            result["robots_txt"] = {"found": False, "disallows": []}
+            result["robots_txt"] = {
+                "found": False,
+                "disallows": []
+            }
 
-        # --- Meta Robots ---
         meta_robots = soup.find("meta", {"name": "robots"})
         result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
 
-        # --- Internal Broken Links ---
         base_domain = parsed_url.netloc
         for a in anchor_tags:
             href = a["href"]
@@ -253,15 +248,13 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
                         internal_errors.append({"url": full_url, "status": head_resp.status_code})
                 except Exception as e:
                     internal_errors.append({"url": full_url, "error": str(e)})
+
         result["internal_link_errors"] = internal_errors
 
     except Exception as e:
         result["error"] = str(e)
-        print(f"❌ Error in full_seo_audit for {url}: {e}")
 
     return result
-
-
 
 
 

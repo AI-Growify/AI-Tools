@@ -125,61 +125,75 @@ def compute_sitewide_metrics(seo_data):
 
 
 # --- Crawler Function ---
-def crawl_entire_site(start_url):
-    visited = set()
-    queue = [start_url]
-    all_reports = []
+def crawl_entire_site(start_url: str, max_pages: int | None = None):
+    visited, queue, all_reports = set(), [start_url], []
     total_to_crawl = 1
-    progress_bar = st.progress(0)
-    status_text = st.empty()
 
-    # Add duplication trackers here
-    titles_seen = set()
-    descs_seen = set()
-    content_hashes_seen = set()
+    progress_bar = st.progress(0)
+    status_text  = st.empty()
+
+    # duplicate trackers
+    titles_seen, descs_seen, content_hashes_seen = set(), set(), set()
 
     while queue:
-        current_index = total_to_crawl - len(queue)
-        current_url = queue.pop(0)
-        normalized_current = normalize_url(current_url)
+        if max_pages and len(visited) >= max_pages:
+            break
 
-        if normalized_current in visited:
+        current_index = total_to_crawl - len(queue)
+        current_url   = queue.pop(0)
+        norm_current  = normalize_url(current_url)
+
+        if norm_current in visited:
             continue
 
-        status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
+        status_text.text(f"🔍 Auditing {current_url} "
+                         f"({current_index + 1} / ≈{total_to_crawl})")
 
         try:
             html = get_rendered_html(current_url)
             if not html:
-                all_reports.append({"url": current_url, "report": {"error": f"Could not render page: {current_url}"}})
+                all_reports.append({"url": current_url,
+                                    "report": {"error": "Could not render page"}})
                 continue
 
+            print(f"📄 Crawled {current_url}  |  {len(html)} bytes")
+
             soup = BeautifulSoup(html, "html.parser")
-            visited.add(normalized_current)
-            report = full_seo_audit(current_url, titles_seen, descs_seen, content_hashes_seen, html)
+            visited.add(norm_current)
+
+            report = full_seo_audit(current_url,
+                                    titles_seen,
+                                    descs_seen,
+                                    content_hashes_seen,
+                                    html)
             all_reports.append({"url": current_url, "report": report})
 
-            base = urlparse(start_url).netloc
+            # enqueue internal links
+            base_netloc = urlparse(start_url).netloc.replace("www.", "")
             for a in soup.find_all("a", href=True):
                 href = a["href"]
                 if not is_valid_link(href):
                     continue
-                full_url = urljoin(current_url, href)
-                normalized_url = normalize_url(full_url)
-                if urlparse(normalized_url).netloc == base and normalized_url not in visited and normalized_url not in queue:
-                    queue.append(normalized_url)
+                full   = urljoin(current_url, href)
+                norm   = normalize_url(full)
+                netloc = urlparse(norm).netloc.replace("www.", "")
+
+                if netloc == base_netloc and norm not in visited and norm not in queue:
+                    queue.append(norm)
                     total_to_crawl += 1
+                    print("  ↪️  queued", norm)
 
             progress_bar.progress((current_index + 1) / total_to_crawl)
-            time.sleep(0.5)
+            time.sleep(0.3)
 
         except Exception as e:
             all_reports.append({"url": current_url, "error": str(e)})
+            print(f"⚠️ Error on {current_url}: {e}")
 
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
-
+    
 # --- Streamlit App ---
 def main():
     st.title("Full-Site SEO Auditor")

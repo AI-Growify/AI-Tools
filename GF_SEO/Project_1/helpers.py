@@ -47,6 +47,9 @@ def should_skip_url(url):
     return False
 
 def get_rendered_html(url, driver=None):
+    import os
+    import shutil
+    
     try:
         if driver is None:
             options = uc.ChromeOptions()
@@ -56,13 +59,32 @@ def get_rendered_html(url, driver=None):
             options.add_argument("--disable-gpu")
             options.add_argument("--disable-extensions")
             options.add_argument("--disable-infobars")
+            options.add_argument("--disable-web-security")
+            options.add_argument("--disable-features=VizDisplayCompositor")
             
-            if os.path.exists("/usr/bin/chromium-browser"):
-                options.binary_location = "/usr/bin/chromium-browser"
+            # Find Chrome binary
+            chrome_binary_paths = [
+                "/usr/bin/chromium-browser",
+                "/usr/bin/chromium", 
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable"
+            ]
+            
+            chrome_binary = None
+            for path in chrome_binary_paths:
+                if os.path.exists(path) and os.access(path, os.X_OK):
+                    chrome_binary = path
+                    break
+            
+            if not chrome_binary:
+                chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium")
+            
+            if chrome_binary:
+                options.binary_location = chrome_binary
             else:
-                options.binary_location = "/usr/bin/chromium"
+                raise FileNotFoundError("Chrome browser not found")
             
-            driver = uc.Chrome(options=options)  # ✅ ONLY create driver if it's None
+            driver = uc.Chrome(options=options)
 
         driver.get(url)
         time.sleep(2)

@@ -1,5 +1,7 @@
+# Headless browser & Xvfb
 xvfb
-chromium
+# Google Chrome & matching driver
+google-chrome-stable
 chromedriver
 libglib2.0-0
 libsm6

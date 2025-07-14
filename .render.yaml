@@ -8,4 +8,4 @@ services:
       - source: /.*
         headers:
           - key: Cache-Control
-            value: no-storea
+            value: no-store

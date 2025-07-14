@@ -56,14 +56,16 @@ def get_rendered_html(url, driver=None):
             options.add_argument("--disable-gpu")
             options.add_argument("--disable-extensions")
             options.add_argument("--disable-infobars")
+            
             if os.path.exists("/usr/bin/chromium-browser"):
                 options.binary_location = "/usr/bin/chromium-browser"
             else:
-                options.binary_location = "/usr/bin/chromium"  # ✅ For Render
-
+                options.binary_location = "/usr/bin/chromium"
+            
+            driver = uc.Chrome(options=options)  # ✅ ONLY create driver if it's None
 
         driver.get(url)
-        time.sleep(2)  # Reduce wait
+        time.sleep(2)
         html = driver.page_source
         return html
 

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: growify
+    env: python
+    plan: free
+    buildCommand: |
+      apt-get update && \
+      apt-get install -y --no-install-recommends $(grep -vE '^\s*#' apt.txt | tr '\n' ' ') && \
+      pip install -r requirements.txt
+    startCommand: >
+      xvfb-run -a -s "-screen 0 1024x768x24"
+      env STREAMLIT_CLI_NO_PROMPT=1
+      CHROME_BIN=/usr/bin/google-chrome
+      CHROMEDRIVER_PATH=/usr/bin/chromedriver
+      streamlit run main_dashboard.py
+      --server.port=$PORT
+      --server.address=0.0.0.0

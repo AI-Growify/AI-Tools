@@ -163,12 +163,10 @@ def crawl_entire_site(start_url, max_pages=None):
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-infobars")
 
-    
-    # ✅ Add this block
     if os.path.exists("/usr/bin/chromium-browser"):
-        options.binary_location = "/usr/bin/chromium-browser"
+        chrome_options.binary_location = "/usr/bin/chromium-browser"
     else:
-        options.binary_location = "/usr/bin/chromium"
+        chrome_options.binary_location = "/usr/bin/chromium"
     
     driver = uc.Chrome(options=chrome_options)
 

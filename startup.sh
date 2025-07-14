@@ -5,6 +5,9 @@ export DISPLAY=:99
 export CHROME_BIN=/usr/bin/chromium-browser
 export CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
+# Prevent interactive Streamlit prompt
+export STREAMLIT_CLI_NO_PROMPT=1
+
 echo "🖥️  Starting virtual display..."
 Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
 sleep 2

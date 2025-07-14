@@ -1,26 +1,37 @@
-# Headless browser & Xvfb
+# Virtual display and X11 tools
 xvfb
-# Google Chrome & matching driver
-google-chrome-stable
-chromedriver
-libglib2.0-0
-libsm6
-libxrender1
-libxext6
-libgl1-mesa-glx
-libxss1
-libappindicator3-1
-libnss3
-lsb-release
-xdg-utils
-libgconf-2-4
-libxcursor1
-libxdamage1
+xauth            # required for xvfb-run
 libxrandr2
-libgtk-3-0
+libxss1
+libxcursor1
 libxcomposite1
 libasound2
 libatk1.0-0
-libdrm2
+libnss3
 libxkbcommon0
-libatspi2.0-0
+libatk-bridge2.0-0
+libxdamage1
+libdrm2
+libxext6
+libxfixes3
+libxrender1
+libx11-xcb1
+libxcb1
+libx11-6
+libglib2.0-0
+libgtk-3-0
+libgl1-mesa-glx
+libsm6
+
+# Google Chrome + Chromedriver
+google-chrome-stable
+chromedriver
+
+# Useful system helpers (not required but safe)
+lsb-release
+xdg-utils
+libappindicator3-1
+libgconf-2-4
+wget
+gnupg
+unzip

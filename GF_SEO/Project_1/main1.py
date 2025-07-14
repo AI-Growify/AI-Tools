@@ -12,12 +12,117 @@ import markdown2
 import pandas as pd
 from collections import defaultdict
 import os
+import shutil
+import undetected_chromedriver as uc
 
-# --- Normalize and Clean URLs ---
+# ADD THIS FUNCTION HERE - RIGHT AFTER IMPORTS
+def setup_chrome_driver():
+    """
+    Sets up Chrome driver with proper paths for Render deployment
+    """
+    chrome_options = uc.ChromeOptions()
+    
+    # Essential Chrome options for headless server environment
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-field-trial-config")
+    chrome_options.add_argument("--disable-back-forward-cache")
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--disable-default-apps")
+    chrome_options.add_argument("--disable-hang-monitor")
+    chrome_options.add_argument("--disable-prompt-on-repost")
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--disable-translate")
+    chrome_options.add_argument("--metrics-recording-only")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--safebrowsing-disable-auto-update")
+    chrome_options.add_argument("--enable-automation")
+    chrome_options.add_argument("--password-store=basic")
+    chrome_options.add_argument("--use-mock-keychain")
+    
+    # Memory optimization
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=4096")
+    
+    # Render-specific Chrome binary path detection
+    chrome_binary_paths = [
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium", 
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
+        "/usr/local/bin/chromium",
+        "/usr/local/bin/google-chrome"
+    ]
+    
+    # Find available Chrome binary
+    chrome_binary = None
+    for path in chrome_binary_paths:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            chrome_binary = path
+            break
+    
+    if not chrome_binary:
+        # Try using shutil.which to find Chrome
+        chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium") or shutil.which("google-chrome")
+    
+    if chrome_binary:
+        chrome_options.binary_location = chrome_binary
+        print(f"✅ Found Chrome binary at: {chrome_binary}")
+    else:
+        raise FileNotFoundError(
+            "Chrome browser not found. Please ensure chromium-browser is installed via apt.txt"
+        )
+    
+    # Chrome driver path detection
+    chromedriver_paths = [
+        "/usr/bin/chromedriver",
+        "/usr/local/bin/chromedriver",
+        "/snap/bin/chromedriver",
+        "/usr/bin/chromium-chromedriver"
+    ]
+    
+    chromedriver_path = None
+    for path in chromedriver_paths:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            chromedriver_path = path
+            break
+    
+    if not chromedriver_path:
+        chromedriver_path = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
+    
+    try:
+        # Try to create driver with specific paths
+        if chromedriver_path:
+            driver = uc.Chrome(options=chrome_options, driver_executable_path=chromedriver_path)
+            print(f"✅ ChromeDriver initialized with path: {chromedriver_path}")
+        else:
+            # Let undetected_chromedriver handle driver path automatically
+            driver = uc.Chrome(options=chrome_options)
+            print("✅ ChromeDriver initialized automatically")
+        
+        return driver
+        
+    except Exception as e:
+        print(f"❌ Chrome driver initialization failed: {e}")
+        raise
+
+# --- Normalize and Clean URLs --- (your existing functions continue here)
 def normalize_url(url):
     parsed = urlparse(url)
     clean_path = parsed.path.rstrip('/')
     return urlunparse((parsed.scheme, parsed.netloc, clean_path, '', '', ''))
+
+# ... rest of your existing code ...
 
 def is_valid_link(href):
     return (
@@ -155,20 +260,16 @@ def crawl_entire_site(start_url, max_pages=None):
         return None
 
     # ✅ Launch browser ONCE
-    chrome_options = uc.ChromeOptions()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-infobars")
-
-    if os.path.exists("/usr/bin/chromium-browser"):
-        chrome_options.binary_location = "/usr/bin/chromium-browser"
-    else:
-        chrome_options.binary_location = "/usr/bin/chromium"
-    
-    driver = uc.Chrome(options=chrome_options)
+    # ✅ Launch browser with improved error handling
+    driver = None
+    try:
+        driver = setup_chrome_driver()
+        driver.set_page_load_timeout(30)
+        status_text.text("🚀 Chrome driver initialized successfully!")
+        
+    except Exception as e:
+        status_text.text(f"❌ Failed to initialize Chrome driver: {e}")
+        return [{"url": start_url, "report": {"error": f"Chrome driver initialization failed: {e}"}}]
 
     driver.set_page_load_timeout(30)
 
@@ -218,7 +319,12 @@ def crawl_entire_site(start_url, max_pages=None):
                 all_reports.append({"url": current_url, "report": {"error": str(e)}})
 
     finally:
-        driver.quit()
+        if driver:
+            try:
+                driver.quit()
+                print("✅ Chrome driver closed successfully")
+            except:
+                pass
 
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)

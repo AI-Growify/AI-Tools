@@ -20,8 +20,123 @@ import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+import shutil
 
 load_dotenv()
+
+def setup_chrome_driver():
+    """
+    Sets up Chrome driver with proper paths for Render deployment
+    """
+    chrome_options = uc.ChromeOptions()
+    
+    # Essential Chrome options for headless server environment
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-field-trial-config")
+    chrome_options.add_argument("--disable-back-forward-cache")
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--disable-default-apps")
+    chrome_options.add_argument("--disable-hang-monitor")
+    chrome_options.add_argument("--disable-prompt-on-repost")
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--disable-translate")
+    chrome_options.add_argument("--metrics-recording-only")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--safebrowsing-disable-auto-update")
+    chrome_options.add_argument("--enable-automation")
+    chrome_options.add_argument("--password-store=basic")
+    chrome_options.add_argument("--use-mock-keychain")
+    chrome_options.add_argument("--single-process")  # Add this for Render
+    chrome_options.add_argument("--disable-setuid-sandbox")  # Add this for Render
+    
+    # Memory optimization
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=4096")
+    
+    # Render-specific Chrome binary path detection
+    chrome_binary_paths = [
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium", 
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
+        "/usr/local/bin/chromium",
+        "/usr/local/bin/google-chrome"
+    ]
+    
+    # Find available Chrome binary
+    chrome_binary = None
+    for path in chrome_binary_paths:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            chrome_binary = path
+            print(f"✅ Found Chrome binary at: {path}")
+            break
+    
+    if not chrome_binary:
+        # Try using shutil.which to find Chrome
+        chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium") or shutil.which("google-chrome")
+        if chrome_binary:
+            print(f"✅ Found Chrome binary via which: {chrome_binary}")
+    
+    if chrome_binary:
+        chrome_options.binary_location = chrome_binary
+    else:
+        raise FileNotFoundError(
+            "Chrome browser not found. Please ensure chromium-browser is installed via apt.txt"
+        )
+    
+    # Chrome driver path detection
+    chromedriver_paths = [
+        "/usr/bin/chromedriver",
+        "/usr/local/bin/chromedriver",
+        "/snap/bin/chromedriver",
+        "/usr/bin/chromium-chromedriver"
+    ]
+    
+    chromedriver_path = None
+    for path in chromedriver_paths:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            chromedriver_path = path
+            print(f"✅ Found ChromeDriver at: {path}")
+            break
+    
+    if not chromedriver_path:
+        chromedriver_path = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
+        if chromedriver_path:
+            print(f"✅ Found ChromeDriver via which: {chromedriver_path}")
+    
+    try:
+        # Try to create driver with specific paths
+        if chromedriver_path:
+            driver = uc.Chrome(options=chrome_options, driver_executable_path=chromedriver_path)
+            print(f"✅ ChromeDriver initialized with path: {chromedriver_path}")
+        else:
+            # Let undetected_chromedriver handle driver path automatically
+            driver = uc.Chrome(options=chrome_options)
+            print("✅ ChromeDriver initialized automatically")
+        
+        return driver
+        
+    except Exception as e:
+        print(f"❌ Chrome driver initialization failed: {e}")
+        # Try with version_main parameter for compatibility
+        try:
+            driver = uc.Chrome(options=chrome_options, version_main=None)
+            print("✅ ChromeDriver initialized with version_main=None")
+            return driver
+        except Exception as e2:
+            print(f"❌ Second attempt failed: {e2}")
+            raise Exception(f"Failed to initialize Chrome driver: {e}")
 
 def display_wrapped_json(data, width=80):
     def wrap_str(s):
@@ -47,54 +162,34 @@ def should_skip_url(url):
     return False
 
 def get_rendered_html(url, driver=None):
-    import os
-    import shutil
-    
+    """
+    Updated to use the same Chrome driver setup as main1.py
+    """
     try:
         if driver is None:
-            options = uc.ChromeOptions()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-extensions")
-            options.add_argument("--disable-infobars")
-            options.add_argument("--disable-web-security")
-            options.add_argument("--disable-features=VizDisplayCompositor")
-            
-            # Find Chrome binary
-            chrome_binary_paths = [
-                "/usr/bin/chromium-browser",
-                "/usr/bin/chromium", 
-                "/usr/bin/google-chrome",
-                "/usr/bin/google-chrome-stable"
-            ]
-            
-            chrome_binary = None
-            for path in chrome_binary_paths:
-                if os.path.exists(path) and os.access(path, os.X_OK):
-                    chrome_binary = path
-                    break
-            
-            if not chrome_binary:
-                chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium")
-            
-            if chrome_binary:
-                options.binary_location = chrome_binary
-            else:
-                raise FileNotFoundError("Chrome browser not found")
-            
-            driver = uc.Chrome(options=options)
+            # Use the same setup function instead of creating driver manually
+            driver = setup_chrome_driver()
+            should_quit = True
+        else:
+            should_quit = False
 
         driver.get(url)
         time.sleep(2)
         html = driver.page_source
+        
+        if should_quit:
+            driver.quit()
+            
         return html
 
     except Exception as e:
         print(f"❌ Failed to render: {e}")
+        if driver and should_quit:
+            try:
+                driver.quit()
+            except:
+                pass
         return None
-
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
@@ -286,8 +381,6 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
 
     return result
 
-
-
 def ai_analysis(report):
     prompt = f"""You are an advanced SEO and web performance analyst. I am providing a JSON-formatted audit report of a website. This JSON includes data for individual URLs covering:
 - HTTP/HTTPS status and response codes (including 4xx and 5xx errors)
@@ -326,12 +419,11 @@ Important:
 - Parse the full report without skipping fields.
 - Do NOT return your output as JSON.
 - Do NOT include triple backticks or code blocks.
-- Make the response client-friendly, as if it’s going into a formal audit report.
+- Make the response client-friendly, as if it's going into a formal audit report.
 - Maintain clean structure, use bullet points and sections for clarity.
 
 [SEO_REPORT]: {report}
 """
-
 
     api_key = os.getenv("GEMINI_API_KEY")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"

@@ -11,6 +11,7 @@ import io
 import markdown2
 import pandas as pd
 from collections import defaultdict
+import os
 
 # --- Normalize and Clean URLs ---
 def normalize_url(url):

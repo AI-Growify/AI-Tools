@@ -2,8 +2,21 @@ services:
   - type: web
     name: ai-growify
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run main_dashboard.py --server.port=$PORT --server.address=0.0.0.0
+    buildCommand: |
+      apt-get update && 
+      apt-get install -y chromium-browser chromium-chromedriver xvfb libglib2.0-0 libsm6 libxrender1 libxext6 libgl1-mesa-glx &&
+      pip install -r requirements.txt
+    startCommand: |
+      export DISPLAY=:99 &&
+      Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & 
+      streamlit run main_dashboard.py --server.port=$PORT --server.address=0.0.0.0
+    envVars:
+      - key: DISPLAY
+        value: ":99"
+      - key: CHROME_BIN
+        value: "/usr/bin/chromium-browser"
+      - key: CHROMEDRIVER_PATH
+        value: "/usr/bin/chromedriver"
     headers:
       - source: /.*
         headers:

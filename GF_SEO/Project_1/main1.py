@@ -48,6 +48,8 @@ def setup_chrome_driver():
     chrome_options.add_argument("--enable-automation")
     chrome_options.add_argument("--password-store=basic")
     chrome_options.add_argument("--use-mock-keychain")
+    chrome_options.add_argument("--single-process")  # Add this for Render
+    chrome_options.add_argument("--disable-setuid-sandbox")  # Add this for Render
     
     # Memory optimization
     chrome_options.add_argument("--memory-pressure-off")
@@ -69,15 +71,17 @@ def setup_chrome_driver():
     for path in chrome_binary_paths:
         if os.path.exists(path) and os.access(path, os.X_OK):
             chrome_binary = path
+            print(f"✅ Found Chrome binary at: {path}")
             break
     
     if not chrome_binary:
         # Try using shutil.which to find Chrome
         chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium") or shutil.which("google-chrome")
+        if chrome_binary:
+            print(f"✅ Found Chrome binary via which: {chrome_binary}")
     
     if chrome_binary:
         chrome_options.binary_location = chrome_binary
-        print(f"✅ Found Chrome binary at: {chrome_binary}")
     else:
         raise FileNotFoundError(
             "Chrome browser not found. Please ensure chromium-browser is installed via apt.txt"
@@ -95,10 +99,13 @@ def setup_chrome_driver():
     for path in chromedriver_paths:
         if os.path.exists(path) and os.access(path, os.X_OK):
             chromedriver_path = path
+            print(f"✅ Found ChromeDriver at: {path}")
             break
     
     if not chromedriver_path:
         chromedriver_path = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
+        if chromedriver_path:
+            print(f"✅ Found ChromeDriver via which: {chromedriver_path}")
     
     try:
         # Try to create driver with specific paths
@@ -114,7 +121,14 @@ def setup_chrome_driver():
         
     except Exception as e:
         print(f"❌ Chrome driver initialization failed: {e}")
-        raise
+        # Try with version_main parameter for compatibility
+        try:
+            driver = uc.Chrome(options=chrome_options, version_main=None)
+            print("✅ ChromeDriver initialized with version_main=None")
+            return driver
+        except Exception as e2:
+            print(f"❌ Second attempt failed: {e2}")
+            raise Exception(f"Failed to initialize Chrome driver: {e}")
 
 # --- Normalize and Clean URLs --- (your existing functions continue here)
 def normalize_url(url):
@@ -233,7 +247,6 @@ def compute_sitewide_metrics(seo_data):
 # --- Crawler Function ---
 def crawl_entire_site(start_url, max_pages=None):
     from selenium.common.exceptions import TimeoutException
-    import undetected_chromedriver as uc
 
     visited = set()
     queue = [start_url]
@@ -259,19 +272,16 @@ def crawl_entire_site(start_url, max_pages=None):
                 time.sleep(2)
         return None
 
-    # ✅ Launch browser ONCE
-    # ✅ Launch browser with improved error handling
+    # ✅ Launch browser using the setup function
     driver = None
     try:
-        driver = setup_chrome_driver()
+        driver = setup_chrome_driver()  # Use your setup function instead of uc.Chrome()
         driver.set_page_load_timeout(30)
         status_text.text("🚀 Chrome driver initialized successfully!")
         
     except Exception as e:
         status_text.text(f"❌ Failed to initialize Chrome driver: {e}")
         return [{"url": start_url, "report": {"error": f"Chrome driver initialization failed: {e}"}}]
-
-    driver.set_page_load_timeout(30)
 
     try:
         while queue:
@@ -284,7 +294,6 @@ def crawl_entire_site(start_url, max_pages=None):
 
             if normalized_current in visited or should_skip_url(normalized_current):
                 continue
-
 
             status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 

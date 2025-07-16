@@ -1,17 +1,32 @@
-services:
-  - type: web
-    name: growify
-    env: python
-    plan: free
-    buildCommand: |
-      apt-get update && \
-      apt-get install -y --no-install-recommends $(grep -vE '^\s*#' apt.txt | tr '\n' ' ') && \
-      pip install -r requirements.txt
-    startCommand: >
-      xvfb-run -a -s "-screen 0 1024x768x24"
-      env STREAMLIT_CLI_NO_PROMPT=1
-      CHROME_BIN=/usr/bin/google-chrome
-      CHROMEDRIVER_PATH=/usr/bin/chromedriver
-      streamlit run main_dashboard.py
-      --server.port=$PORT
-      --server.address=0.0.0.0
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+COPY apt.txt .
+RUN apt-get update && \
+    xargs -a apt.txt apt-get install -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome manually (more stable for Render)
+RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    apt-get update && apt-get install -y ./google-chrome-stable_current_amd64.deb && \
+    rm google-chrome-stable_current_amd64.deb
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy your app
+COPY . .
+
+ENV PYTHONUNBUFFERED=1
+ENV STREAMLIT_PORT=8501
+
+EXPOSE 8501
+
+# Important: Tell Selenium where Chrome is
+ENV CHROME_BIN=/usr/bin/google-chrome
+ENV PATH=$PATH:/usr/local/bin/
+
+CMD ["streamlit", "run", "main_dashboard.py", "--server.enableCORS=false", "--server.enableXsrfProtection=false", "--server.port=8501"]

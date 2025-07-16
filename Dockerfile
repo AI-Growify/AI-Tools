@@ -31,7 +31,7 @@ ENV STREAMLIT_PORT=8501
 EXPOSE 8501
 
 # ✅ Production CMD (auto-start Streamlit)
-CMD ["xvfb-run", "-a", "-s", "-screen 0 1024x768x24", "streamlit", "run", "main_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+CMD ["xvfb-run", "-a", "-s", "-screen 0 1024x768x24", "streamlit", "run", "main_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
 
 # ✅ [Optional] Debugging Tip:
 # If debugging, you can TEMPORARILY switch CMD to below to access shell via Render:

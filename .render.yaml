@@ -7,10 +7,3 @@ services:
     dockerfilePath: Dockerfile
     healthCheckPath: /
     autoDeploy: true
-    envVars:
-      - key: PYTHONUNBUFFERED
-        value: "1"
-      - key: CHROME_BIN
-        value: "/usr/bin/google-chrome"
-      - key: CHROMEDRIVER_PATH
-        value: "/usr/bin/chromedriver"

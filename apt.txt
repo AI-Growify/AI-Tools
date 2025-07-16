@@ -1,6 +1,6 @@
 # Virtual display and X11 tools
 xvfb
-xauth            # required for xvfb-run
+xauth
 libxrandr2
 libxss1
 libxcursor1
@@ -23,15 +23,11 @@ libgtk-3-0
 libgl1-mesa-glx
 libsm6
 
-# Google Chrome + Chromedriver
-google-chrome-stable
-chromedriver
-
-# Useful system helpers (not required but safe)
-lsb-release
-xdg-utils
+# Google Chrome dependencies (we'll install Chrome separately)
 libappindicator3-1
 libgconf-2-4
+lsb-release
+xdg-utils
 wget
 gnupg
 unzip

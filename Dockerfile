@@ -2,28 +2,27 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# ✅ Install OS dependencies (minimum stable setup)
+# Install OS dependencies + Chrome via Google’s official apt repo
 RUN apt-get update && apt-get install -y \
-    xvfb xauth libnss3 libatk-bridge2.0-0 libgtk-3-0 libx11-xcb1 \
-    wget unzip gnupg lsb-release xdg-utils && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    wget gnupg curl xdg-utils apt-transport-https ca-certificates lsb-release \
+    xvfb xauth libnss3 libatk-bridge2.0-0 libgtk-3-0 libx11-xcb1 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
-# ✅ Install Chrome separately (stable way)
-RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt-get install -y /tmp/chrome.deb && rm /tmp/chrome.deb
+# ✅ Add Google’s official signing key and Chrome repo
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-linux-signing-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | tee /etc/apt/sources.list.d/google-chrome.list
 
-# ✅ Install Python dependencies
+# ✅ Install Google Chrome latest stable with correct dependencies
+RUN apt-get update && apt-get install -y google-chrome-stable && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && pip install -r requirements.txt
 
-# ✅ Copy app code
 COPY . .
 
-# ✅ Environment setup
 ENV CHROME_BIN=/usr/bin/google-chrome
 ENV STREAMLIT_PORT=8501
 
 EXPOSE 8501
 
-# ✅ Streamlit run inside X virtual framebuffer (for headless Chrome)
 CMD ["xvfb-run", "-a", "-s", "-screen 0 1024x768x24", "streamlit", "run", "main_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]

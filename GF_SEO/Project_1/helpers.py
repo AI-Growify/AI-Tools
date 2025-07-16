@@ -20,138 +20,77 @@ import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
-def setup_chrome_driver():
-    """
-    Sets up Chrome driver with proper paths for Render deployment
-    """
-    chrome_options = uc.ChromeOptions()
-    
-    # Essential Chrome options for headless server environment
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-infobars")
-    chrome_options.add_argument("--disable-web-security")
-    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-    chrome_options.add_argument("--disable-background-timer-throttling")
-    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-    chrome_options.add_argument("--disable-renderer-backgrounding")
-    chrome_options.add_argument("--disable-field-trial-config")
-    chrome_options.add_argument("--disable-back-forward-cache")
-    chrome_options.add_argument("--disable-background-networking")
-    chrome_options.add_argument("--disable-default-apps")
-    chrome_options.add_argument("--disable-hang-monitor")
-    chrome_options.add_argument("--disable-prompt-on-repost")
-    chrome_options.add_argument("--disable-sync")
-    chrome_options.add_argument("--disable-translate")
-    chrome_options.add_argument("--metrics-recording-only")
-    chrome_options.add_argument("--no-first-run")
-    chrome_options.add_argument("--safebrowsing-disable-auto-update")
-    chrome_options.add_argument("--enable-automation")
-    chrome_options.add_argument("--password-store=basic")
-    chrome_options.add_argument("--use-mock-keychain")
-    chrome_options.add_argument("--single-process")  # Add this for Render
-    chrome_options.add_argument("--disable-setuid-sandbox")  # Add this for Render
-    
-    # Memory optimization
-    chrome_options.add_argument("--memory-pressure-off")
-    chrome_options.add_argument("--max_old_space_size=4096")
-    
-    # Render-specific Chrome binary path detection
-    chrome_binary_paths = [
-        "/usr/bin/chromium-browser",
-        "/usr/bin/chromium", 
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/snap/bin/chromium",
-        "/usr/local/bin/chromium",
-        "/usr/local/bin/google-chrome"
-    ]
-    
-    # Find available Chrome binary
-    chrome_binary = None
-    for path in chrome_binary_paths:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            chrome_binary = path
-            print(f"✅ Found Chrome binary at: {path}")
-            break
-    
-    if not chrome_binary:
-        # Try using shutil.which to find Chrome
-        chrome_binary = shutil.which("chromium-browser") or shutil.which("chromium") or shutil.which("google-chrome")
-        if chrome_binary:
-            print(f"✅ Found Chrome binary via which: {chrome_binary}")
-    
-    if chrome_binary:
-        chrome_options.binary_location = chrome_binary
-    else:
-        raise FileNotFoundError(
-            "Chrome browser not found. Please ensure chromium-browser is installed via apt.txt"
-        )
-    
-    # Chrome driver path detection
-    chromedriver_paths = [
-        "/usr/bin/chromedriver",
-        "/usr/local/bin/chromedriver",
-        "/snap/bin/chromedriver",
-        "/usr/bin/chromium-chromedriver"
-    ]
-    
-    chromedriver_path = None
-    for path in chromedriver_paths:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            chromedriver_path = path
-            print(f"✅ Found ChromeDriver at: {path}")
-            break
-    
-    if not chromedriver_path:
-        chromedriver_path = shutil.which("chromedriver") or shutil.which("chromium-chromedriver")
-        if chromedriver_path:
-            print(f"✅ Found ChromeDriver via which: {chromedriver_path}")
-    
-    try:
-        # Try to create driver with specific paths
-        if chromedriver_path:
-            driver = uc.Chrome(options=chrome_options, driver_executable_path=chromedriver_path)
-            print(f"✅ ChromeDriver initialized with path: {chromedriver_path}")
-        else:
-            # Let undetected_chromedriver handle driver path automatically
-            driver = uc.Chrome(options=chrome_options)
-            print("✅ ChromeDriver initialized automatically")
-        
-        return driver
-        
-    except Exception as e:
-        print(f"❌ Chrome driver initialization failed: {e}")
-        # Try with version_main parameter for compatibility
-        try:
-            driver = uc.Chrome(options=chrome_options, version_main=None)
-            print("✅ ChromeDriver initialized with version_main=None")
-            return driver
-        except Exception as e2:
-            print(f"❌ Second attempt failed: {e2}")
-            raise Exception(f"Failed to initialize Chrome driver: {e}")
+_http_head_cache: dict[str, int] = {}   # outbound URL ➜ status code
+_session = requests.Session()           # connection reuse
 
-def display_wrapped_json(data, width=80):
-    def wrap_str(s):
-        return '\n'.join(wrap(s, width=width))
-    def process_item(item):
-        if isinstance(item, dict):
-            return {k: process_item(v) for k, v in item.items()}
-        elif isinstance(item, list):
-            return [process_item(i) for i in item]
-        elif isinstance(item, str):
-            return wrap_str(item)
+def head_cached(url, timeout=5):
+    code = _http_head_cache.get(url)
+    if code is None:
+        try:
+            resp = _session.head(url, timeout=timeout, allow_redirects=True)
+            code = resp.status_code
+            if code == 405:  # Method Not Allowed
+                resp = _session.get(url, timeout=timeout, allow_redirects=True)
+                code = resp.status_code
+        except Exception:
+            code = 599
+        _http_head_cache[url] = code
+    return code
+
+
+def head_cached_parallel(urls: list[str], max_workers: int = 12) -> dict[str, int]:
+    """
+    Returns {url: status_code} for every URL in <urls>.
+    Uses cache, runs HEAD calls in parallel where needed.
+    """
+    results: dict[str, int] = {}
+
+    # ---- split URLs: cached vs not‑cached ------------------------
+    to_fetch = []
+    for u in urls:
+        code = _http_head_cache.get(u)
+        if code is not None:
+            results[u] = code
         else:
-            return item
-    wrapped_data = process_item(data)
-    st.code(json.dumps(wrapped_data, indent=2), language='json')
+            to_fetch.append(u)
+
+    # ---- fetch the uncached ones in parallel --------------------
+    if to_fetch:
+        def _hc(u):  # small wrapper so map returns (url, code)
+            return u, head_cached(u)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for u, code in pool.map(_hc, to_fetch):
+                results[u] = code  # head_cached has already stored it too
+    return results
+
+
+def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
+    """
+    Show just the first <preview> items of a huge JSON list,
+    then offer a download link for the full file.
+    """
+    if not data:
+        st.write("⛔️ No data to display.")
+        return
+
+    # ---- preview block ----
+    preview_block = data[:preview]
+    st.json(preview_block, expanded=False)
+    st.caption(f"Showing the first {len(preview_block)} of {len(data)} pages")
+
+    # ---- full‑download button ----
+    st.download_button(
+        "📥 Download full SEO report (JSON)",
+        json.dumps(data, indent=2),
+        file_name="seo_report.json",
+        mime="application/json",
+    )
+
     
 def should_skip_url(url):
     skip_keywords = ["/cart", "/checkout", "/login", "/account", "/my-account"]
@@ -161,35 +100,18 @@ def should_skip_url(url):
         return True
     return False
 
-def get_rendered_html(url, driver=None):
-    """
-    Updated to use the same Chrome driver setup as main1.py
-    """
+def get_rendered_html(url, driver=None, wait=0.5):
     try:
         if driver is None:
-            # Use the same setup function instead of creating driver manually
-            driver = setup_chrome_driver()
-            should_quit = True
-        else:
-            should_quit = False
+            raise ValueError("Pass an existing driver for best speed")
 
         driver.get(url)
-        time.sleep(2)
-        html = driver.page_source
-        
-        if should_quit:
-            driver.quit()
-            
-        return html
-
+        time.sleep(wait)            # 0.3–0.5 s is usually enough
+        return driver.page_source
     except Exception as e:
-        print(f"❌ Failed to render: {e}")
-        if driver and should_quit:
-            try:
-                driver.quit()
-            except:
-                pass
+        print(f"❌ Failed to render {url}: {e}")
         return None
+
 
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
@@ -202,10 +124,70 @@ def extract_internal_links(html, base_url):
             internal_links.add(full_url.split("#")[0])
     return list(internal_links)
 
+def get_urls_from_sitemap(sitemap_url):
+    """
+    Handles both sitemap.xml and sitemap indexes.
+    Returns a deduplicated list of on‑site HTML URLs
+    (skips images, PDFs, etc.).
+    """
+    EXT_SKIP = {".jpg", ".jpeg", ".png", ".gif", ".webp",
+                ".svg", ".pdf", ".zip", ".mp4", ".mov"}
+
+    def fetch_soup(url):
+        try:
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            return BeautifulSoup(r.content, "xml")
+        except Exception as e:
+            print(f"❌ Failed to fetch sitemap {url}: {e}")
+            return None
+
+    def is_html_link(link, base_netloc):
+        parsed = urlparse(link)
+        if parsed.netloc and parsed.netloc != base_netloc:
+            return False
+        if any(parsed.path.lower().endswith(ext) for ext in EXT_SKIP):
+            return False
+        return True
+
+    root_soup = fetch_soup(sitemap_url)
+    if not root_soup:
+        return []
+
+    base_netloc = urlparse(sitemap_url).netloc
+    urls = set()
+
+    if root_soup.find("sitemapindex"):
+        for sm in root_soup.find_all("sitemap"):
+            loc = sm.find("loc")
+            if not loc:
+                continue
+            child_soup = fetch_soup(loc.text.strip())
+            if not child_soup:
+                continue
+            for url_tag in child_soup.find_all("url"):
+                loc_tag = url_tag.find("loc")
+                if loc_tag and is_html_link(loc_tag.text.strip(), base_netloc):
+                    urls.add(loc_tag.text.strip())
+    else:
+        for url_tag in root_soup.find_all("url"):
+            loc_tag = url_tag.find("loc")
+            if loc_tag and is_html_link(loc_tag.text.strip(), base_netloc):
+                urls.add(loc_tag.text.strip())
+
+    return list(urls)
+
+
+
 def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
+    """Run the full on‑page technical SEO audit for a single URL.
+
+    *Uses cached + parallel HEAD requests for outbound links, images, and
+    internal link‑error checks to maximise speed.*
+    """
     result = {}
-    visited_urls = set()
-    internal_errors = []
+    visited_urls: set[str] = set()
+    internal_errors: list[dict] = []
 
     try:
         if not html:
@@ -216,12 +198,11 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
         anchor_tags = soup.find_all("a", href=True)
         parsed_url = urlparse(url)
 
-        # --- Meta Data ---
+        # ─── Meta data ────────────────────────────────────────────────
         title_tag = soup.find("title")
         desc_tag = soup.find("meta", {"name": "description"})
-
         title_text = title_tag.text.strip() if title_tag else ""
-        desc_text = desc_tag["content"].strip() if desc_tag and desc_tag.get("content") else ""
+        desc_text  = desc_tag.get("content", "").strip() if desc_tag else ""
 
         result["title"] = {
             "text": title_text or "Missing",
@@ -234,7 +215,7 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             "word_count": len(desc_text.split()),
         }
 
-        # Duplicate Checks
+        # Duplicate checks
         if title_text in titles_seen:
             result["duplicate_title"] = True
         titles_seen.add(title_text)
@@ -243,136 +224,118 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
             result["duplicate_meta_description"] = True
         descs_seen.add(desc_text)
 
-        page_text = " ".join(soup.stripped_strings)
-        text_hash = hash(page_text)
+        page_text    = " ".join(soup.stripped_strings)
+        text_hash    = hash(page_text)
         if text_hash in content_hashes_seen:
             result["duplicate_content"] = True
         content_hashes_seen.add(text_hash)
 
-        # Headings
+        # Headings counts + H1/H1‑title dupes
         result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
         h1_tag = soup.find("h1")
         h1_text = h1_tag.text.strip() if h1_tag else ""
         result["H1_content"] = h1_text
-        if h1_text and title_text and h1_text.strip().lower() == title_text.strip().lower():
+        if h1_text and title_text and h1_text.lower() == title_text.lower():
             result["h1_title_duplicate"] = True
-        # --- External (outbound) broken link check ---
-        external_broken_links = []
+
+        # ─── External (outbound) link checks – Parallel + Cached ─────
+        SOCIAL_DOMAINS = [
+            "facebook.com", "instagram.com", "twitter.com", "linkedin.com", "x.com",
+            "youtube.com", "pinterest.com", "tiktok.com", "wa.me", "web.whatsapp.com"
+        ]
+
+        urls_to_test = []
         for a in anchor_tags:
             href = a.get("href")
             if not href:
                 continue
-            full_url = urljoin(url, href)
-            href_netloc = urlparse(full_url).netloc
-            if href_netloc and href_netloc != parsed_url.netloc:
-                try:
-                    resp = requests.head(full_url, timeout=5, allow_redirects=True)
-                    if resp.status_code >= 400:
-                        external_broken_links.append({
-                            "url": full_url,
-                            "status": resp.status_code
-                        })
-                except Exception as e:
-                    external_broken_links.append({
-                        "url": full_url,
-                        "error": str(e)
-                    })
+            full_url    = urljoin(url, href)
+            href_domain = urlparse(full_url).netloc
+            if any(s in href_domain for s in SOCIAL_DOMAINS):
+                continue  # skip social
+            if href_domain and href_domain != parsed_url.netloc:
+                urls_to_test.append(full_url)
 
-        result["external_broken_links"] = external_broken_links     
+        external_broken_links = [
+            {"url": u, "status": code}
+            for u, code in head_cached_parallel(urls_to_test).items()
+            if code >= 400
+        ]
+        result["external_broken_links"] = external_broken_links
 
-        # Text Stats
-        total_words = len(re.findall(r'\b\w+\b', page_text))
-        anchor_tags = soup.find_all("a", href=True)
+        # ─── Text / anchor stats ─────────────────────────────────────
+        total_words  = len(re.findall(r"\b\w+\b", page_text))
         anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
-        anchor_words = sum(len(a.split()) for a in anchor_texts)
+        anchor_words = sum(len(t.split()) for t in anchor_texts)
 
         result["word_stats"] = {
             "total_words": total_words,
             "anchor_words": anchor_words,
             "anchor_ratio_percent": round((anchor_words / total_words) * 100, 2) if total_words else 0,
-            "sample_anchors": anchor_texts[:10]
+            "sample_anchors": anchor_texts[:10],
         }
-
         result["empty_anchor_text_links"] = sum(1 for a in anchor_tags if not a.get_text(strip=True))
+        non_desc = {"click here", "read more", "learn more", "more", "here", "view"}
+        result["non_descriptive_anchors"] = sum(1 for t in anchor_texts if t.lower() in non_desc)
 
-        non_descriptive_phrases = {"click here", "read more", "learn more", "more", "here", "view"}
-        result["non_descriptive_anchors"] = sum(
-            1 for a in anchor_texts if a.lower() in non_descriptive_phrases
-        )
-
-        # HTTPS check
-        result["https_info"] = {
-            "using_https": url.startswith("https://"),
-            "was_redirected": False
-        }
-
+        # ─── HTTPS & misc checks ─────────────────────────────────────
+        result["https_info"] = {"using_https": url.startswith("https://"), "was_redirected": False}
         if len(anchor_tags) <= 1:
             result["single_internal_link"] = True
-
         http_links = [urljoin(url, a["href"]) for a in anchor_tags if url.startswith("https://") and urljoin(url, a["href"]).startswith("http://")]
         if http_links:
             result["http_links_on_https"] = http_links
-
         if parsed_url.query:
             result["url_has_parameters"] = True
-
         html_size = len(html)
         result["text_to_html_ratio_percent"] = round((len(page_text) / html_size) * 100, 2) if html_size else 0
-
         result["schema"] = {
             "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
-            "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
+            "microdata_found": bool(soup.find_all(attrs={"itemscope": True})),
         }
 
-        images = soup.find_all("img")
-        broken_images = []
-        for img in images[:10]:
-            src = img.get("src")
-            if src:
-                img_url = urljoin(url, src)
-                try:
-                    img_resp = requests.head(img_url, timeout=5)
-                    if img_resp.status_code >= 400:
-                        broken_images.append({"src": src, "status": img_resp.status_code})
-                except Exception as e:
-                    broken_images.append({"src": src, "error": str(e)})
-
+        # ─── Image checks – Parallel + Cached (first 10 images) ─────
+        images      = soup.find_all("img")
+        image_urls  = [urljoin(url, img.get("src")) for img in images[:10] if img.get("src")]
+        broken_images = [
+            {"src": u, "status": code}
+            for u, code in head_cached_parallel(image_urls).items()
+            if code >= 400
+        ]
         result["images"] = {
             "total_images": len(images),
             "images_without_alt": sum(1 for img in images if not img.get("alt")),
             "sample_images": [{"src": img.get("src"), "alt": img.get("alt")} for img in images[:5]],
-            "broken_images": broken_images
+            "broken_images": broken_images,
         }
 
+        # ─── robots.txt quick check ─────────────────────────────────
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
-            disallows = [line.strip() for line in robots_response.text.splitlines() if line.lower().startswith("disallow")]
-            result["robots_txt"] = {
-                "found": True,
-                "disallows": disallows
-            }
-        except:
-            result["robots_txt"] = {
-                "found": False,
-                "disallows": []
-            }
+            disallows = [ln.strip() for ln in robots_response.text.splitlines() if ln.lower().startswith("disallow")]
+            result["robots_txt"] = {"found": True, "disallows": disallows}
+        except Exception:
+            result["robots_txt"] = {"found": False, "disallows": []}
 
         meta_robots = soup.find("meta", {"name": "robots"})
-        result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
+        result["meta_robots"] = meta_robots.get("content", "") if meta_robots else ""
 
-        base_domain = parsed_url.netloc
+        # ─── Internal link error probe – Parallel + Cached ──────────
+        base_domain   = parsed_url.netloc
+        internal_urls = []
         for a in anchor_tags:
-            href = a["href"]
-            full_url = urljoin(url, href)
-            if urlparse(full_url).netloc == base_domain and full_url not in visited_urls:
-                visited_urls.add(full_url)
-                try:
-                    head_resp = requests.head(full_url, allow_redirects=True, timeout=5)
-                    if head_resp.status_code >= 400:
-                        internal_errors.append({"url": full_url, "status": head_resp.status_code})
-                except Exception as e:
-                    internal_errors.append({"url": full_url, "error": str(e)})
+            href = a.get("href")
+            if not href:
+                continue
+            full_u = urljoin(url, href)
+            if urlparse(full_u).netloc == base_domain and full_u not in visited_urls:
+                visited_urls.add(full_u)
+                internal_urls.append(full_u)
+
+        for link, code in head_cached_parallel(internal_urls).items():
+            if code >= 400:
+                internal_errors.append({"url": link, "status": code})
 
         result["internal_link_errors"] = internal_errors
 
@@ -381,7 +344,60 @@ def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
 
     return result
 
-def ai_analysis(report):
+
+# helpers.py  (add near the bottom)
+
+def extract_page_issues(report: dict) -> list[str]:
+    """
+    Returns a list of plain‑English issue labels detected in a single-page
+    `report` produced by full_seo_audit().
+    """
+    issues = []
+
+    # ---- Meta data ----
+    if report.get("title", {}).get("text") == "Missing":
+        issues.append("missing <title>")
+    if report.get("description", {}).get("text") == "Missing":
+        issues.append("missing meta description")
+    if report.get("duplicate_title"):
+        issues.append("duplicate <title>")
+    if report.get("duplicate_meta_description"):
+        issues.append("duplicate meta description")
+
+    # ---- Content / headings ----
+    if report.get("duplicate_content"):
+        issues.append("duplicate body content")
+    if report.get("H1_content", "") == "":
+        issues.append("no H1")
+    if report.get("headings", {}).get("H1", 0) > 1:
+        issues.append("multiple H1s")
+
+    # ---- Links & images ----
+    if report.get("empty_anchor_text_links", 0):
+        issues.append("links with empty anchor text")
+    if report.get("external_broken_links"):
+        issues.append(f"{len(report['external_broken_links'])} broken outbound link(s)")
+    if report.get("images", {}).get("images_without_alt", 0):
+        issues.append(f"{report['images']['images_without_alt']} image(s) without alt")
+
+    # ---- Ratios & misc ----
+    if report.get("word_stats", {}).get("anchor_ratio_percent", 0) > 15:
+        issues.append("anchor‑text ratio > 15 %")
+    if report.get("text_to_html_ratio_percent", 100) < 10:
+        issues.append("text‑to‑HTML ratio < 10 %")
+    if not report.get("schema", {}).get("json_ld_found"):
+        issues.append("no JSON‑LD schema")
+
+    return issues
+
+
+def ai_analysis(report, page_issues_map=None):
+
+    issues_block = "\n".join(
+        f"- **{url}**: " + ", ".join(problems)
+        for url, problems in page_issues_map.items()
+    ) or "✅ No page‑level issues detected."
+
     prompt = f"""You are an advanced SEO and web performance analyst. I am providing a JSON-formatted audit report of a website. This JSON includes data for individual URLs covering:
 - HTTP/HTTPS status and response codes (including 4xx and 5xx errors)
 - Page speed and response time
@@ -419,11 +435,13 @@ Important:
 - Parse the full report without skipping fields.
 - Do NOT return your output as JSON.
 - Do NOT include triple backticks or code blocks.
-- Make the response client-friendly, as if it's going into a formal audit report.
+- Make the response client-friendly, as if it’s going into a formal audit report.
 - Maintain clean structure, use bullet points and sections for clarity.
 
+issues_block: {issues_block}
 [SEO_REPORT]: {report}
 """
+
 
     api_key = os.getenv("GEMINI_API_KEY")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"

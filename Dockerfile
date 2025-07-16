@@ -5,8 +5,9 @@ WORKDIR /app
 # ✅ Pre-install system dependencies
 COPY apt.txt .
 RUN apt-get update && \
-    xargs -a apt.txt apt-get install -y && \
+    DEBIAN_FRONTEND=noninteractive xargs -a apt.txt apt-get install -y --no-install-recommends && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
 
 # ✅ Install Chrome manually
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \

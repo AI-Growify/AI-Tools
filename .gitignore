@@ -1,0 +1,7 @@
+newAI/
+.env
+growify-ai-d8b93-firebase-adminsdk-fbsvc-c1c940d0d9.json
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

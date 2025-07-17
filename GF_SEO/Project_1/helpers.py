@@ -133,14 +133,26 @@ def get_urls_from_sitemap(sitemap_url):
     EXT_SKIP = {".jpg", ".jpeg", ".png", ".gif", ".webp",
                 ".svg", ".pdf", ".zip", ".mp4", ".mov"}
 
-    def fetch_soup(url):
-        try:
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            return BeautifulSoup(r.content, "xml")
-        except Exception as e:
-            print(f"❌ Failed to fetch sitemap {url}: {e}")
-            return None
+    def fetch_soup(url, retries=3, delay=3):
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/115.0.0.0 Safari/537.36"
+        }
+
+        for i in range(retries):
+            try:
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code == 429:
+                    print(f"⏳ Got 429 Too Many Requests for {url}, retrying in {delay * (i + 1)}s...")
+                    time.sleep(delay * (i + 1))
+                    continue
+                r.raise_for_status()
+                return BeautifulSoup(r.content, "xml")
+            except Exception as e:
+                print(f"❌ Failed to fetch sitemap {url}: {e}")
+                return None
+        return None
 
     def is_html_link(link, base_netloc):
         parsed = urlparse(link)

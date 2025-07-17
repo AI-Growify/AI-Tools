@@ -8,13 +8,14 @@ from firebase_admin import credentials, firestore
 import requests
 import time
 import json
+from dotenv import load_dotenv
 # ─── 1) Page Config & THEME ───────────────────────────────────────────────────
 st.set_page_config(
     page_title="Growify AI Toolkit",
     page_icon="🔒",
     layout="wide",
 )
-
+load_dotenv()
 # Optional hook for your theme.py
 try:
     from theme import apply_dark_theme
@@ -181,6 +182,7 @@ else:
         "seo": os.path.join(base_dir, "GF_SEO"),
         "scraper": os.path.join(base_dir, "GF_SCRAPERS"),
         "pixelmatch": os.path.join(base_dir, "GF_IMG_FIND"),
+        "linesheet": os.path.join(base_dir,"GF_LINE_SHEET")
     }
     for p in projects.values():
         if p not in sys.path:
@@ -188,29 +190,34 @@ else:
 
     # Import Tool Modules
     try:
-        from GF_BLOG_IDEA import blog_ideas as blog_module
+        from GF_BLOG_IDEA import blog_idea_main as blog_module
     except ImportError:
         blog_module = None
 
     try:
-        from GF_IMG_RE import app as img_module
+        from GF_IMG_RE import img_re_main as img_module
     except ImportError:
         img_module = None
 
     try:
-        from GF_SEO import app as seo_module
+        from GF_SEO import seo_main as seo_module
     except ImportError:
         seo_module = None
 
     try:
-        from GF_SCRAPERS import app as scraper_module
+        from GF_SCRAPERS import scrapers_main as scraper_module
     except ImportError:
         scraper_module = None
 
     try:
-        from GF_IMG_FIND import app as pixelmatch_module
+        from GF_IMG_FIND import img_find_main as pixelmatch_module
     except ImportError:
         pixelmatch_module = None
+
+    try:
+        from GF_LINE_SHEET import line_sheet_main as line_module
+    except ImportError:
+        img_module = None
 
     # Session State Tool Tracker
     if "tool" not in st.session_state:
@@ -234,12 +241,13 @@ else:
         with col3:
             st.button("MetaScan", use_container_width=True, on_click=lambda: st.session_state.update(tool="seo"))
 
-        col4, col5 = st.columns(2)
+        col4, col5,col6 = st.columns(3)
         with col4:
             st.button("PixelMatch", use_container_width=True, on_click=lambda: st.session_state.update(tool="pixelmatch"))
         with col5:
             st.button("PitchKit", use_container_width=True, on_click=lambda: st.session_state.update(tool="scraper"))
-
+        with col6:
+            st.button("Specsy", use_container_width=True, on_click=lambda: st.session_state.update(tool="linesheet"))
     # ─── Routing ─────────────────────────────────────────────────────────────
     t = st.session_state.tool
     if t == "home":
@@ -259,3 +267,6 @@ else:
     elif t == "pixelmatch":
         if pixelmatch_module: pixelmatch_module.main()
         else: st.error("⚠️ PixelMatch module not found.")
+    elif t == "linesheet":
+        if pixelmatch_module: line_module.run()
+        else: st.error("⚠️ specsy module not found.")

@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
 from urllib.parse import urlparse, urljoin, urlunparse
-
 import streamlit as st
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -13,253 +12,67 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers import (
     ai_analysis,
     display_wrapped_json,
-    full_seo_audit,
-    get_rendered_html,
     should_skip_url,
     extract_page_issues,
     get_urls_from_sitemap,
+    convert_to_comprehensive_seo_csv,
+    audit_pages_multithreaded,
 )
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Utility helpers
-# ────────────────────────────────────────────────────────────────────────────────
-
 def normalize_url(url: str) -> str:
-    """Remove trailing slashes + query params so the same page isn’t re‑crawled."""
+    """Remove trailing slashes + query params so the same page isn't re‑crawled."""
     parsed = urlparse(url)
     clean_path = parsed.path.rstrip("/")
     return urlunparse((parsed.scheme, parsed.netloc, clean_path, "", "", ""))
 
-
-def is_valid_link(href: str) -> bool:
-    return href and not href.startswith("#") and not href.lower().startswith("javascript")
-
-
-# ───────────── PDF / Markdown helpers ─────────────
-
 def build_html_summary(summary_html: str, site_url: str) -> str:
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    return f"""
-    <!DOCTYPE html>
-    <html lang=\"en\">
-    <head>
-      <meta charset=\"UTF-8\">
-      <style>
-        body {{ font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.6; }}
-        h1   {{ font-size: 20pt; text-align: center; }}
-        h2   {{ font-size: 16pt; margin-top: 20px; }}
-        ul   {{ padding-left: 20px; }}
-        li   {{ margin-bottom: 10px; }}
-        table {{ border-collapse: collapse; width: 100%; table-layout: fixed; }}
-        table, th, td {{ border: 1px solid #888; padding: 8px; word-wrap: break-word; white-space: normal; vertical-align: top; }}
-        th {{ background-color: #f2f2f2; }}
-      </style>
-    </head>
-    <body>
-      <h1>AI SEO Summary Report</h1>
-      <p><strong>Website:</strong> {site_url}</p>
-      <p><strong>Date:</strong> {date_str}</p>
-      {summary_html}
-    </body>
-    </html>
-    """
-
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SEO Audit Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        h1, h2, h3 {{ color: #333; }}
+        .header {{ border-bottom: 2px solid #333; padding-bottom: 10px; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SEO Audit Report</h1>
+        <p><strong>Website:</strong> {site_url}</p>
+        <p><strong>Date:</strong> {date_str}</p>
+    </div>
+    {summary_html}
+</body>
+</html>"""
 
 def markdown_to_html(md: str) -> str:
     return markdown2.markdown(md, extras=["tables", "fenced-code-blocks"])
-
 
 def convert_to_pdf(html: str) -> bytes:
     result = io.BytesIO()
     pisa.CreatePDF(io.StringIO(html), dest=result)
     return result.getvalue()
 
-
-# ───────────── Metric aggregator ─────────────
-
-def compute_sitewide_metrics(seo_data):
-    """Return a DataFrame with **Metric**, **Count**, **Pages** columns.
-
-    *Count*  – number of pages that triggered the metric.
-    *Pages*  – newline‑separated list of the affected page URLs.
-    """
-    from collections import defaultdict
-
-    # use two maps so we can populate count + affected urls in a single pass
-    counts: dict[str, int]           = defaultdict(int)
-    affected: dict[str, list[str]]   = defaultdict(list)
-
-    for page in seo_data:
-        url  = page.get("url")
-        rpt  = page.get("report", {})
-
-        # ── Meta data ──────────────────────────────────────────
-        if rpt.get("title", {}).get("text") == "Missing":
-            counts["Missing Title Tags"] += 1
-            affected["Missing Title Tags"].append(url)
-        if rpt.get("description", {}).get("text") == "Missing":
-            counts["Missing Meta Descriptions"] += 1
-            affected["Missing Meta Descriptions"].append(url)
-        if rpt.get("duplicate_title"):
-            counts["Duplicate Title Tags"] += 1
-            affected["Duplicate Title Tags"].append(url)
-        if rpt.get("duplicate_meta_description"):
-            counts["Duplicate Meta Descriptions"] += 1
-            affected["Duplicate Meta Descriptions"].append(url)
-        if rpt.get("duplicate_content"):
-            counts["Duplicate Content"] += 1
-            affected["Duplicate Content"].append(url)
-
-        # ── Headings ───────────────────────────────────────────
-        if rpt.get("H1_content", "") == "":
-            counts["H1 Content Missing"] += 1
-            affected["H1 Content Missing"].append(url)
-        if rpt.get("headings", {}).get("H1", 0) > 1:
-            counts["Excessive H1 Elements"] += 1
-            affected["Excessive H1 Elements"].append(url)
-
-        # ── Images ─────────────────────────────────────────────
-        if (n := rpt.get("images", {}).get("images_without_alt", 0)):
-            counts["Images Without Alt Attributes"] += n  # count images, not pages
-            affected["Images Without Alt Attributes"].append(url)
-
-        # ── Anchor text ───────────────────────────────────────
-        if rpt.get("empty_anchor_text_links", 0):
-            counts["Empty Anchor Text Links"] += 1
-            affected["Empty Anchor Text Links"].append(url)
-        if rpt.get("word_stats", {}).get("anchor_ratio_percent", 0) > 15:
-            counts["High Anchor Word Ratio (%)"] += 1
-            affected["High Anchor Word Ratio (%)"].append(url)
-
-        # ── Schema / ratios ───────────────────────────────────
-        if not rpt.get("schema", {}).get("json_ld_found", False):
-            counts["JSON-LD Schema Absent"] += 1
-            affected["JSON-LD Schema Absent"].append(url)
-        if rpt.get("text_to_html_ratio_percent", 100) < 10:
-            counts["Low Text-to-HTML Ratio (%)"] += 1
-            affected["Low Text-to-HTML Ratio (%)"].append(url)
-
-        # ── Broken outbound links ─────────────────────────────
-        if rpt.get("external_broken_links"):
-            counts["Pages With Broken Outbound Links"] += 1
-            affected["Pages With Broken Outbound Links"].append(url)
-            counts["Total Broken Outbound Links"] += len(rpt["external_broken_links"])
-            # we purposely don’t list every broken link row – only page level
-
-    rows = [
-        {
-            "Metric": m,
-            "Count": counts[m],
-            "Pages": "\n".join(affected[m])
-        }
-        for m in counts
-    ]
-    return pd.DataFrame(rows, columns=["Metric", "Count", "Pages"])
-
-def compute_broken_link_summary(seo_data):
-    rows = []
-
-    for page in seo_data:
-        url = page.get("url")
-        rpt = page.get("report", {})
-        broken_links = rpt.get("external_broken_links", [])
-
-        if broken_links:
-            broken_urls = [bl.get("url", "N/A") for bl in broken_links]
-            rows.append({
-                "Page URL": url,
-                "Broken Link Count": len(broken_urls),
-                "Broken Links": ", ".join(broken_urls)
-            })
-
-    return pd.DataFrame(rows)
-
-# ────────────────────────────────────────────────────────────────────────────────
-# Crawling fallback (old behaviour)
-# ────────────────────────────────────────────────────────────────────────────────
-
-def crawl_entire_site(start_url, max_pages=None):
-    """Legacy crawler when sitemap is not used."""
-    import undetected_chromedriver as uc
-    from selenium.common.exceptions import TimeoutException
-
-    visited = set()
-    queue   = [start_url]
-    reports = []
-    total   = 1
-
-    bar   = st.progress(0.0)
-    status = st.empty()
-
-    titles_seen, descs_seen, hashes_seen = set(), set(), set()
-
-    def safe_get(driver, url, retries=2, wait=1.5):
-        for _ in range(retries):
-            try:
-                driver.get(url)
-                time.sleep(wait)
-                return driver.page_source
-            except Exception:
-                time.sleep(2)
-        return None
-
-    opts = uc.ChromeOptions()
-    opts.add_argument("--headless")
-    opts.add_argument("--no-sandbox")
-    driver = uc.Chrome(options=opts)
-    driver.set_page_load_timeout(30)
-
-    try:
-        while queue:
-            if max_pages and len(visited) >= max_pages:
-                break
-            idx = total - len(queue)
-            url = queue.pop(0)
-            if should_skip_url(url):
-                continue
-            html = safe_get(driver, url)
-            if not html:
-                reports.append({"url": url, "report": {"error": "render failed"}})
-                continue
-            soup = BeautifulSoup(html, "html.parser")
-            visited.add(url)
-            rpt = full_seo_audit(url, titles_seen, descs_seen, hashes_seen, html)
-            reports.append({"url": url, "report": rpt})
-
-            base_domain = urlparse(start_url).netloc
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if not is_valid_link(href):
-                    continue
-                ful = urljoin(url, href)
-                if urlparse(ful).netloc == base_domain and ful not in visited and ful not in queue:
-                    queue.append(ful)
-                    total += 1
-            bar.progress((idx + 1) / total)
-            status.text(f"Crawled {idx+1} of approx {total}: {url}")
-    finally:
-        driver.quit()
-        bar.progress(1.0)
-        status.text("✅ Crawl completed")
-    return reports
-
-
-# ────────────────────────────────────────────────────────────────────────────────
-# Streamlit application entry point
-# ────────────────────────────────────────────────────────────────────────────────
-
 def main():
+    st.title("Multi-Threaded SEO Auditor")
+
+    # UI controls
+    start_url = st.text_input("Enter the homepage URL (e.g., https://example.com)")
+    use_sitemap = st.checkbox("🔍 Use sitemap.xml for page discovery (faster, recommended)", value=True)
     
-    st.title("Full‑Site SEO Auditor")
+    col1, col2 = st.columns(2)
+    with col1:
+        limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
+    with col2:
+        max_workers = st.slider("🚀 Parallel Workers (more = faster)", min_value=2, max_value=8, value=4)
+    
+    st.caption(f"Using {max_workers} parallel workers for faster auditing. This will audit only pages from the sitemap.")
 
-    # ── UI controls ───────────────────────────────────────────────
-    start_url   = st.text_input("Enter the homepage URL (e.g., https://example.com)")
-    use_sitemap = st.checkbox("🔍 Use sitemap.xml for page discovery (faster, recommended)")
-    st.caption("This will crawl all internal pages and analyze them.")
-    limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
-
-    # ── Start button ──────────────────────────────────────────────
-    if st.button("Start Full Site Audit"):
+    # Start button
+    if st.button("Start Multi-Threaded Audit"):
         if not start_url:
             st.warning("Please enter a valid URL.")
             st.stop()
@@ -267,120 +80,179 @@ def main():
         if not start_url.startswith(("http://", "https://")):
             start_url = "https://" + start_url.strip()
 
-        parsed = urlparse(start_url)
-        if parsed.netloc == "gauravguptastudio.com":
-            start_url = "https://www.gauravguptastudio.com"
-
-        # ── 1) Gather URLs ────────────────────────────────────────
+        # 1) Gather URLs
         with st.spinner("Gathering links..."):
             if use_sitemap:
-                sitemap_url   = start_url.rstrip("/") + "/sitemap.xml"
-                urls_to_audit = get_urls_from_sitemap(sitemap_url)
+                sitemap_url = start_url.rstrip("/") + "/sitemap.xml"
+                urls_to_audit = [normalize_url(u) for u in get_urls_from_sitemap(sitemap_url)]
                 if not urls_to_audit:
                     st.error("❌ No URLs found in sitemap or sitemap is inaccessible.")
                     return
             else:
-                urls_to_audit = [start_url]
+                urls_to_audit = [normalize_url(start_url)]
 
             st.session_state["urls_to_audit"] = urls_to_audit
 
-    # ── Preview + Trigger Audit button ────────────────────────────
+    # Preview + Trigger Audit button
     if "urls_to_audit" in st.session_state and "seo_data" not in st.session_state:
         urls_to_audit = st.session_state["urls_to_audit"]
+
         st.markdown("### 🔗 Preview of Pages to Audit")
         st.write(f"**Total pages found:** {len(urls_to_audit)}")
+
         with st.expander("Click to view URLs"):
             st.dataframe(pd.DataFrame(urls_to_audit, columns=["URL"]))
-        if st.button("🚀 Start Audit"):
-            # ── 2) Audit pages ────────────────────────────────────
-            with st.spinner("Auditing site pages..."):
-                titles_seen, descs_seen, hashes_seen = set(), set(), set()
-                all_reports = []
 
-                if use_sitemap:
-                    bar   = st.progress(0.0)
-                    stat  = st.empty()
-                    eta   = st.empty()
+        if st.button("🚀 Start Multi-Threaded Audit"):
+            # 2) MULTI-THREADED: Audit pages with performance metrics
+            with st.spinner("Multi-threaded auditing in progress..."):
+                
+                # Limit pages if requested
+                max_pages = min(200 if limit_pages else 1000, len(urls_to_audit))
+                urls_to_process = urls_to_audit[:max_pages]
+                
+                # Progress tracking
+                bar = st.progress(0.0)
+                stat = st.empty()
+                eta = st.empty()
+                start_time = time.time()
+                
+                def progress_callback(completed, total, current_url):
+                    progress = completed / total
+                    bar.progress(progress)
+                    stat.markdown(f"🔍 **Progress:** {completed}/{total} pages audited")
+                    stat.markdown(f"📋 **Currently processing:** [`{current_url}`]({current_url})")
+                    stat.markdown(f"🚀 **Using {max_workers} parallel workers**")
+                    
+                    # Update ETA
+                    elapsed = time.time() - start_time
+                    if completed > 0:
+                        avg_time_per_page = elapsed / completed
+                        remaining_pages = total - completed
+                        remaining_time = avg_time_per_page * remaining_pages
+                        mm, ss = divmod(int(remaining_time), 60)
+                        eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s** (multi-threaded)")
+                
+                # Run multi-threaded audit
+                all_reports = audit_pages_multithreaded(
+                    urls_to_process, 
+                    max_workers=max_workers,
+                    progress_callback=progress_callback
+                )
+                
+                bar.progress(1.0)
+                stat.markdown(f"✅ Multi-threaded audit complete! **{len(all_reports)}** pages audited in parallel")
+                eta.empty()
 
-                    start_time = time.time()
-                    total      = len(urls_to_audit)
-
-                    # single persistent driver
-                    options = uc.ChromeOptions()
-                    options.add_argument("--headless")
-                    options.add_argument("--no-sandbox")
-                    driver = uc.Chrome(options=options)
-                    driver.set_page_load_timeout(15)
-
-                    def audit_one(u):
-                        html = get_rendered_html(u, driver)
-                        return {"url": u, "report": full_seo_audit(u, titles_seen, descs_seen, hashes_seen, html)}
-
-                    try:
-                        with ThreadPoolExecutor(max_workers=6) as pool:
-                            futures = {pool.submit(audit_one, u): u for u in urls_to_audit}
-                            for i, fut in enumerate(as_completed(futures)):
-                                res = fut.result()
-                                all_reports.append(res)
-
-                                # progress UI
-                                bar.progress((i + 1) / total)
-                                stat.markdown(f"🔍 **Audited {i+1}/{total}:** [`{res['url']}`]({res['url']})")
-                                elapsed   = time.time() - start_time
-                                remaining = (elapsed / (i + 1)) * (total - i - 1)
-                                mm, ss    = divmod(int(remaining), 60)
-                                eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s**")
-
-                        bar.progress(1.0)
-                        stat.markdown("✅ All pages audited.")
-                        eta.empty()
-                    finally:
-                        driver.quit()
-
-                else:
-                    all_reports = crawl_entire_site(start_url, max_pages=200 if limit_pages else None)
-
-                # ── Save results to session ─────────────────────
+                # Save results to session
                 page_issues_map = {
                     pg["url"]: extract_page_issues(pg["report"])
                     for pg in all_reports
                 }
                 page_issues_map = {u: iss for u, iss in page_issues_map.items() if iss}
 
-                st.session_state["seo_data"]        = all_reports
+                st.session_state["seo_data"] = all_reports
                 st.session_state["page_issues_map"] = page_issues_map
-                st.session_state["ai_summary"]      = None
+                st.session_state["ai_summary"] = None
                 st.session_state["ai_summary_time"] = None
 
-            st.success("✅ Audit complete!")
+                # Show performance improvement
+                elapsed_total = time.time() - start_time
+                sequential_estimate = len(all_reports) * 5  # Estimate 5s per page sequentially
+                speedup = sequential_estimate / elapsed_total if elapsed_total > 0 else 1
+                
+                st.success(f"✅ Audit complete in {elapsed_total:.1f}s! Estimated {speedup:.1f}x faster than sequential processing.")
 
-    # ── Report views ───────────────────────────────────────
+    # Report views
     if "seo_data" in st.session_state:
-        view = st.radio("Choose report view:", ["📈 Raw SEO Report", "🤖 AI SEO Summary"])
+        # URL dropdown available across all views
+        st.markdown("### 🔗 Audited URLs")
+        urls_audited = [page_data.get('url', '') for page_data in st.session_state["seo_data"]]
+        
+        selected_url = st.selectbox(
+            "Select a URL to view details:",
+            options=["All URLs"] + urls_audited,
+            index=0
+        )
+        
+        if selected_url != "All URLs":
+            selected_page = next((page for page in st.session_state["seo_data"] if page.get('url') == selected_url), None)
+            if selected_page:
+                st.markdown(f"#### Details for: `{selected_url}`")
+                with st.expander("Click to view detailed report"):
+                    st.json(selected_page.get('report', {}), expanded=False)
+        
+        st.markdown("---")
+        
+        view = st.radio("Choose report view:", ["📈 Raw SEO Report", "📊 SEO Issues CSV", "🤖 AI SEO Summary"])
 
         if view == "📈 Raw SEO Report":
             display_wrapped_json(st.session_state["seo_data"])
 
-        else:
-            metrics_df = compute_sitewide_metrics(st.session_state["seo_data"])
-            st.markdown("### 🔗 Broken Outbound Links by Page")
+        elif view == "📊 SEO Issues CSV":
+            st.markdown("### 📊 Comprehensive SEO Issues Report")
+            
+            comprehensive_df = convert_to_comprehensive_seo_csv(st.session_state["seo_data"])
 
-            broken_summary_df = compute_broken_link_summary(st.session_state["seo_data"])
-
-            if not broken_summary_df.empty:
-                st.dataframe(broken_summary_df)
-                st.download_button(
-                    "📥 Download Broken Links Summary",
-                    broken_summary_df.to_csv(index=False).encode("utf-8"),
-                    file_name="broken_links_summary.csv",
-                    mime="text/csv"
-                )
+            if not comprehensive_df.empty:
+                # Calculate summary stats with proper handling of N/A values
+                issues_with_counts = comprehensive_df[comprehensive_df['Failed checks'] != '']
+                
+                # Filter out non-numeric values before converting to int
+                numeric_issues = issues_with_counts[
+                    (issues_with_counts['Failed checks'] != 'N/A') & 
+                    (issues_with_counts['Failed checks'] != '')
+                ]
+                total_issues = numeric_issues['Failed checks'].astype(int).sum()
+                
+                # Display summary metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Pages Audited", len(st.session_state["seo_data"]))
+                with col2:
+                    st.metric("Total Issues Found", total_issues)
+                with col3:
+                    issues_with_failures = len(numeric_issues[numeric_issues['Failed checks'].astype(int) > 0])
+                    st.metric("Issue Types with Failures", issues_with_failures)
+                
+                # Filter options
+                show_all = st.checkbox("Show all issues (including those with 0 failures)")
+                
+                if show_all:
+                    display_df = comprehensive_df
+                else:
+                    # Only show issues with failures or category headers
+                    display_df = comprehensive_df[
+                        (comprehensive_df['Failed checks'] == '') |  # Category headers
+                        ((comprehensive_df['Failed checks'] != 'N/A') & 
+                         (comprehensive_df['Failed checks'] != '') &
+                         (comprehensive_df['Failed checks'].astype(str) != '0'))  # Issues with failures
+                    ]
+                
+                st.dataframe(display_df, use_container_width=True)
+                
+                # Download buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        "📥 Download Complete SEO Issues CSV",
+                        comprehensive_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"seo_issues_complete_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                
+                with col2:
+                    if not display_df.empty:
+                        st.download_button(
+                            "📥 Download Issues with Failures Only",
+                            display_df.to_csv(index=False).encode("utf-8"),
+                            file_name=f"seo_issues_failures_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv"
+                        )
             else:
-                st.success("✅ No broken outbound links found.")
+                st.success("✅ No issues found across all audited pages.")
 
-            st.markdown("### 📈 Full SEO Issue Metrics (Calculated from All Pages)")
-            st.dataframe(metrics_df)
-
+        else:  # AI SEO Summary
             def generate_summary():
                 return ai_analysis(
                     st.session_state["seo_data"],
@@ -399,6 +271,7 @@ def main():
             st.markdown("### 🤖 AI SEO Summary Preview")
             if gen_t:
                 st.caption(f"Last generated: {gen_t}")
+
             st.markdown(raw)
 
             st.download_button(
@@ -407,7 +280,6 @@ def main():
                 "seo_summary.pdf",
                 mime="application/pdf",
             )
-
 
 if __name__ == "__main__":
     main()

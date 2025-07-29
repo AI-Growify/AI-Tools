@@ -3,11 +3,15 @@ import asyncio
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
+import requests
+import time
+import tempfile
+import shutil   
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import List
-from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 import requests
 from textwrap import wrap
@@ -25,7 +29,8 @@ import requests
 import re
 import ssl
 import socket
-from urllib.parse import urlparse, urljoin, parse_qs
+from urllib.parse import urlparse, urljoin
+from urllib import robotparser
 from bs4 import BeautifulSoup
 from datetime import datetime
 import hashlib
@@ -126,68 +131,232 @@ def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
         file_name="seo_report.json",
         mime="application/json",
     )
+def robust_check_canonical_status(canonical_url, timeout=5):
+    """Performs GET with retry on 429 and returns canonical status."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-AuditBot/1.0)"}
+    
+    try:
+        response = requests.get(canonical_url, headers=headers, timeout=timeout, allow_redirects=True)
+        status = response.status_code
+
+        if status == 200:
+            return {"broken": False, "throttled": False, "status": 200}
+        elif status == 429:
+            time.sleep(2)  # Wait and retry
+            response = requests.get(canonical_url, headers=headers, timeout=timeout, allow_redirects=True)
+            status = response.status_code
+            if status == 200:
+                return {"broken": False, "throttled": False, "status": 200}
+            else:
+                return {"broken": False, "throttled": True, "status": status}
+        else:
+            return {"broken": True, "throttled": False, "status": status}
+
+    except Exception:
+        return {"broken": True, "throttled": False, "status": -1}
 
 def should_skip_url(url):
-    skip_keywords = ["/cart", "/checkout", "/login", "/account", "/my-account"]
+    skip_keywords = [
+    "/cart", "/checkout", "/login", "/signin", "/sign-up", "/signup",
+    "/register", "/forgot-password", "/reset-password", "/logout",
+    "/account", "/accounts", "/my-account", "/user", "/profile",
+    "/wishlist", "/favorites", "/compare", "/order", "/orders",
+    "/track-order", "/track", "/admin", "/dashboard", "/backend"
+]
+
     if any(kw in url.lower() for kw in skip_keywords):
         return True
     if "?" in url:
         return True
     return False
 
-def get_rendered_html_worker(url, wait=0.5):
-    """Worker function for rendering HTML with its own WebDriver instance"""
-    options = uc.ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
+chrome_semaphore = threading.Semaphore(1)
+def robust_page_fetcher(url, wait=0.5):
+    """
+    Robust page fetcher with fallback strategy and proper resource management
+    """
     
-    driver = None
+    # Method 1: Try simple HTTP request first (faster, more reliable)
     try:
-        driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(15)
-        
-        start_time = time.time()
-        driver.get(url)
-        time.sleep(wait)
-        load_time = time.time() - start_time
-        
-        performance_data = {
-            'load_time_seconds': load_time,
-            'page_size_bytes': len(driver.page_source),
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
         }
         
-        try:
-            performance_logs = driver.execute_script("""
-                return {
-                    loadEventEnd: performance.timing.loadEventEnd,
-                    navigationStart: performance.timing.navigationStart,
-                    domContentLoadedEventEnd: performance.timing.domContentLoadedEventEnd,
-                    responseEnd: performance.timing.responseEnd
-                };
-            """)
-            
-            if performance_logs['loadEventEnd'] > 0:
-                page_load_time = (performance_logs['loadEventEnd'] - performance_logs['navigationStart']) / 1000
-                performance_data['browser_load_time_seconds'] = page_load_time
-                performance_data['dom_content_loaded_seconds'] = (performance_logs['domContentLoadedEventEnd'] - performance_logs['navigationStart']) / 1000
-                performance_data['response_time_seconds'] = (performance_logs['responseEnd'] - performance_logs['navigationStart']) / 1000
-        except Exception:
-            pass
-            
-        return driver.page_source, performance_data
+        response = requests.get(url, timeout=15, headers=headers)
+        response.raise_for_status()
+        
+        html = response.text
+        performance_data = {
+            'load_time_seconds': response.elapsed.total_seconds(),
+            'page_size_bytes': len(html),
+            'method_used': 'requests'
+        }
+        
+        print(f"✅ Successfully fetched {url} via HTTP")
+        return html, performance_data
         
     except Exception as e:
-        print(f"❌ Failed to render {url}: {e}")
-        return None, None
-    finally:
-        if driver:
-            try:
-                driver.quit()
-            except:
-                pass
+        print(f"⚠️ HTTP request failed for {url}: {e}")
+        
+        # Method 2: Fallback to ChromeDriver only if necessary
+        return _chrome_fallback(url, wait)
+    
+def convert_to_binary_issue_csv(all_reports):
+    """
+    Converts detailed page reports into a per-page binary issue matrix CSV.
+    Each row = one page
+    Each column = one issue
+    Values = 1 if issue present, 0 otherwise
+    """
+    page_rows = []
+    all_issues = set()
+
+    for page in all_reports:
+        url = page.get("url")
+        report = page.get("report", {})
+        issues = {}
+
+        # 1. Flat top-level boolean or non-zero values
+        for key, val in report.items():
+            if isinstance(val, bool):
+                issues[key] = int(val)
+            elif isinstance(val, int) and val > 0:
+                issues[key] = 1
+            elif isinstance(val, list) and len(val) > 0:
+                issues[key] = 1
+            elif isinstance(val, dict) and key not in {"headings", "images", "word_stats", "performance_metrics", "title", "description", "robots_txt", "https_info", "schema", "meta_robots", "audit_summary"}:
+                issues[key] = 1 if len(val) > 0 else 0
+
+        # 2. Special rules for nested structures
+
+        # Headings
+        headings = report.get("headings", {})
+        if isinstance(headings, dict):
+            issues["missing_h1"] = 1 if headings.get("H1", 0) == 0 else 0
+            issues["missing_h2"] = 1 if headings.get("H2", 0) == 0 else 0
+            issues["multiple_h1"] = 1 if headings.get("H1", 0) > 1 else 0
+
+        # Images
+        images = report.get("images", {})
+        if isinstance(images, dict):
+            issues["missing_image_alt"] = 1 if images.get("images_without_alt", 0) > 0 else 0
+            issues["too_many_images"] = 1 if images.get("total_images", 0) > 50 else 0
+            issues["broken_internal_images"] = 1 if len(images.get("broken_images", [])) > 0 else 0
+            issues["broken_external_images"] = 1 if len(images.get("external_broken_images", [])) > 0 else 0
+
+        # Word stats
+        word_stats = report.get("word_stats", {})
+        if isinstance(word_stats, dict):
+            issues["low_text_to_html_ratio"] = 1 if word_stats.get("anchor_ratio_percent", 100) > 90 or report.get("text_to_html_ratio_percent", 100) < 3 else 0
+            issues["too_much_content"] = 1 if word_stats.get("total_words", 0) > 3000 else 0
+
+        # Robots.txt
+        robots = report.get("robots_txt", {})
+        if isinstance(robots, dict):
+            issues["robots_disallows_crawling"] = int(report.get("robots_disallows_crawling", False))
+            issues["robots_txt_missing"] = 0 if robots.get("found", False) else 1
+
+        # Schema
+        schema = report.get("schema", {})
+        if isinstance(schema, dict):
+            issues["missing_schema"] = 1 if not (schema.get("json_ld_found") or schema.get("microdata_found")) else 0
+
+        # Performance
+        perf = report.get("performance_metrics", {})
+        if isinstance(perf, dict):
+            issues["slow_page_load"] = 1 if perf.get("load_time_seconds", 0) > 3 else 0
+            issues["large_page_size"] = 1 if perf.get("page_size_bytes", 0) > 2_000_000 else 0
+
+        # Meta robots tag
+        meta_robots = report.get("meta_robots", "")
+        if isinstance(meta_robots, str) and "noindex" in meta_robots.lower():
+            issues["meta_robots_noindex"] = 1
+
+        # Final cleanup
+        all_issues.update(issues.keys())
+        page_rows.append((url, issues))
+
+    all_issues = sorted(all_issues)
+
+    # Build rows
+    records = []
+    for url, issues in page_rows:
+        row = {"Page URL": url}
+        for issue in all_issues:
+            row[issue] = issues.get(issue, 0)
+        records.append(row)
+
+    return pd.DataFrame(records)
+
+
+def _chrome_fallback(url, wait=0.5):
+    """ChromeDriver fallback with proper resource management"""
+    
+    with chrome_semaphore:  # Ensure only one Chrome instance at a time
+        driver = None
+        temp_dir = None
+        
+        try:
+            # Create unique temp directory
+            temp_dir = tempfile.mkdtemp()
+            
+            options = uc.ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-images")  # Faster loading
+            options.add_argument(f"--user-data-dir={temp_dir}")
+            options.add_argument("--single-process")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            
+            driver = uc.Chrome(options=options, version_main=None)
+            driver.set_page_load_timeout(20)
+            
+            driver.get(url)
+            time.sleep(wait)
+            
+            html = driver.page_source
+            performance_data = {
+                'load_time_seconds': wait,
+                'page_size_bytes': len(html),
+                'method_used': 'chrome'
+            }
+            
+            print(f"✅ Successfully rendered {url} via Chrome")
+            return html, performance_data
+            
+        except Exception as e:
+            print(f"❌ Chrome fallback failed for {url}: {e}")
+            return None, None
+            
+        finally:
+            # Cleanup resources
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+            
+            if temp_dir:
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                except:
+                    pass
+
+# Fix DataFrame serialization issues
+def fix_dataframe_for_streamlit(df):
+    """Convert DataFrame columns to Streamlit-compatible types"""
+    df_copy = df.copy()
+    for col in df_copy.columns:
+        if df_copy[col].dtype == 'object':
+            df_copy[col] = df_copy[col].astype(str)
+    return df_copy
 
 def get_urls_from_sitemap(sitemap_url):
     """Handles both sitemap.xml and sitemap indexes"""
@@ -247,7 +416,11 @@ def get_urls_from_sitemap(sitemap_url):
             if loc_tag and is_html_link(loc_tag.text.strip(), base_netloc):
                 urls.add(loc_tag.text.strip())
 
-    return list(urls)
+    filtered_urls = [
+        u for u in urls
+        if "/product" not in u.lower() and "/products" not in u.lower() and "/collections" not in u.lower() and "/collection" not in u.lower()  
+    ]
+    return list(filtered_urls)
 
 def full_seo_audit(url, shared_sets, html, response_headers=None, response_status=None, performance=None):
     """Complete enhanced SEO audit - Thread-safe version"""
@@ -360,7 +533,6 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
         if not (html_tag and html_tag.get("lang")):
             result["missing_lang_attribute"] = True
 
-        # Canonical URL validation
         canonical_tags = soup.find_all("link", {"rel": "canonical"})
         if len(canonical_tags) == 0:
             result["missing_canonical"] = True
@@ -371,16 +543,29 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             canonical_url = canonical_tag.get("href")
             if canonical_url:
                 canonical_full_url = urljoin(url, canonical_url)
-                canonical_status = head_cached_parallel([canonical_full_url]).get(canonical_full_url, 200)
-                if canonical_status >= 400:
+
+                # ✅ Use robust checker instead of head_cached_parallel
+                check = robust_check_canonical_status(canonical_full_url)
+                result["canonical_status"] = check["status"]
+
+                if check["broken"]:
                     result["canonical_pages_broken"] = {
-                        "canonical_url": canonical_full_url, 
-                        "status": canonical_status
+                        "canonical_url": canonical_full_url,
+                        "status": check["status"]
                     }
-                
+
+                if check["throttled"]:
+                    result["canonical_pages_throttled"] = {
+                        "canonical_url": canonical_full_url,
+                        "status": check["status"]
+                    }
+
                 canonical_domain = urlparse(canonical_full_url).netloc
                 if canonical_domain != parsed_url.netloc:
-                    result["canonical_external_domain"] = {"canonical_url": canonical_full_url}
+                    result["canonical_external_domain"] = {
+                        "canonical_url": canonical_full_url
+                    }
+
 
         # Enhanced Heading Checks
         headings = {f"H{i}": [h.get_text().strip() for h in soup.find_all(f"h{i}")] for i in range(1, 7)}
@@ -419,7 +604,7 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             result["url_contains_number"] = True
 
         import string
-        allowed_symbols = {'-', '_', '/', '.', '?', '&', '=', '#'}
+        allowed_symbols = {'-', '_', '/', '.', '?', '&', '=', '#', ':'}
         url_symbols = set(char for char in url if char in string.punctuation)
         if url_symbols - allowed_symbols:
             result["url_contains_symbol"] = True
@@ -592,27 +777,45 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
 
         # Robots and meta robots checks
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
+        result["robots_txt"] = {"found": False, "disallows": []}
+        result["disallowed_internal_resource"] = False
+        result["robots_disallows_crawling"] = False
+
         try:
+            # Fetch robots.txt content
             robots_response = requests.get(robots_url, timeout=5)
             if robots_response.status_code == 200:
-                disallows = [ln.strip() for ln in robots_response.text.splitlines() if ln.lower().startswith("disallow")]
-                result["robots_txt"] = {"found": True, "disallows": disallows, "content": robots_response.text}
-                
-                for disallow_line in disallows:
-                    clean_disallow = disallow_line.lower().replace("disallow:", "").strip()
-                    if clean_disallow and parsed_url.path.startswith(clean_disallow):
-                        result["disallowed_internal_resource"] = True
-                        break
-                        
-                if clean_disallow in ["/", "/*"]:
+                robots_text = robots_response.text
+                # Store raw content and disallow lines (for display)
+                disallows = [
+                    ln.strip()
+                    for ln in robots_text.splitlines()
+                    if ln.lower().startswith("disallow")
+                ]
+                result["robots_txt"] = {
+                    "found": True,
+                    "disallows": disallows,
+                    "content": robots_text,
+                }
+
+                # Use robotparser for accurate checking
+                rp = robotparser.RobotFileParser()
+                rp.parse(robots_text.splitlines())
+
+                # Check if URL is disallowed for generic user-agent
+                if not rp.can_fetch("*", url):
+                    result["disallowed_internal_resource"] = True
+
+                # Check if crawling is completely disallowed
+                # (A plain "/" or "/*" rule at the top)
+                if any(rule.strip().lower() in ["disallow: /", "disallow: /*"] for rule in disallows):
                     result["robots_disallows_crawling"] = True
             else:
-                result["robots_txt"] = {"found": False, "disallows": []}
                 result["robots_txt_not_found"] = True
         except Exception:
-            result["robots_txt"] = {"found": False, "disallows": []}
             result["robots_txt_not_found"] = True
 
+        # Check meta robots tag
         meta_robots = soup.find("meta", {"name": "robots"})
         robots_content = meta_robots.get("content", "") if meta_robots else ""
         result["meta_robots"] = robots_content
@@ -642,18 +845,24 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
         # Internal link error probe
         base_domain = parsed_url.netloc
         internal_urls = []
-
+        skip_internal = [
+    "/cart", "/checkout", "/account", "/login", "/orders"
+]
         for a in anchor_tags:
             href = a.get("href")
             if not href:
                 continue
             full_u = urljoin(url, href)
+            # skip known unimportant paths
+            if any(s in full_u.lower() for s in skip_internal):
+                continue
             if urlparse(full_u).netloc == base_domain and full_u not in visited_urls:
                 visited_urls.add(full_u)
                 internal_urls.append(full_u)
 
         for link, code in head_cached_parallel(internal_urls).items():
-            if code >= 400:
+            # ignore 401, 403, 406
+            if code >= 400 and code not in (401, 403, 406):
                 internal_errors.append({"url": link, "status": code})
 
         result["internal_link_errors"] = internal_errors
@@ -687,7 +896,7 @@ def audit_single_page_worker(url, shared_sets):
         if should_skip_url(url):
             return {"url": url, "report": {"error": "skipped", "page_not_crawled": True}}
         
-        html, performance_data = get_rendered_html_worker(url)
+        html, performance_data = robust_page_fetcher(url)
         if not html:
             return {"url": url, "report": {"error": "render failed", "page_not_crawled": True}}
         
@@ -771,8 +980,8 @@ def extract_page_issues(report: dict) -> list[str]:
     if report.get("word_stats", {}).get("anchor_ratio_percent", 0) > 15:
         issues.append("anchor‑text ratio > 15 %")
 
-    if report.get("text_to_html_ratio_percent", 100) < 10:
-        issues.append("text‑to‑HTML ratio < 10 %")
+    if report.get("text_to_html_ratio_percent", 100) < 3:
+        issues.append("text‑to‑HTML ratio < 3 %")
 
     if not report.get("schema", {}).get("json_ld_found"):
         issues.append("no JSON‑LD schema")
@@ -921,7 +1130,7 @@ def convert_to_comprehensive_seo_csv(seo_data: list[dict]) -> pd.DataFrame:
             issue_counts['page_not_indexed'] += 1
         if report.get('page_crawl_depth_too_long'): 
             issue_counts['page_crawl_depth_too_long'] += 1
-        if report.get('text_to_html_ratio_percent', 100) < 10: 
+        if report.get('text_to_html_ratio_percent', 100) < 3: 
             issue_counts['low_text_html_ratio'] += 1
 
     def safe_percentage(count, total):

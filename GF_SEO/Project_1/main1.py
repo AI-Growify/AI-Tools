@@ -12,11 +12,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers import (
     ai_analysis,
     display_wrapped_json,
-    should_skip_url,
     extract_page_issues,
     get_urls_from_sitemap,
     convert_to_comprehensive_seo_csv,
     audit_pages_multithreaded,
+    fix_dataframe_for_streamlit,
+    convert_to_binary_issue_csv
 )
 
 def normalize_url(url: str) -> str:
@@ -57,7 +58,7 @@ def convert_to_pdf(html: str) -> bytes:
     return result.getvalue()
 
 def main():
-    st.title("Multi-Threaded SEO Auditor")
+    st.title("MetaScan - SEO Site   Audit")
 
     # UI controls
     start_url = st.text_input("Enter the homepage URL (e.g., https://example.com)")
@@ -67,12 +68,11 @@ def main():
     with col1:
         limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
     with col2:
-        max_workers = st.slider("🚀 Parallel Workers (more = faster)", min_value=2, max_value=8, value=4)
-    
-    st.caption(f"Using {max_workers} parallel workers for faster auditing. This will audit only pages from the sitemap.")
+        max_workers = 4
+
 
     # Start button
-    if st.button("Start Multi-Threaded Audit"):
+    if st.button("Get Sitemap URLS"):
         if not start_url:
             st.warning("Please enter a valid URL.")
             st.stop()
@@ -101,11 +101,11 @@ def main():
         st.write(f"**Total pages found:** {len(urls_to_audit)}")
 
         with st.expander("Click to view URLs"):
-            st.dataframe(pd.DataFrame(urls_to_audit, columns=["URL"]))
+            st.dataframe(fix_dataframe_for_streamlit(pd.DataFrame(urls_to_audit, columns=["URL"])))
 
-        if st.button("🚀 Start Multi-Threaded Audit"):
+        if st.button("🚀 Start Auditing"):
             # 2) MULTI-THREADED: Audit pages with performance metrics
-            with st.spinner("Multi-threaded auditing in progress..."):
+            with st.spinner("Site Audit in progress..."):
                 
                 # Limit pages if requested
                 max_pages = min(200 if limit_pages else 1000, len(urls_to_audit))
@@ -122,7 +122,6 @@ def main():
                     bar.progress(progress)
                     stat.markdown(f"🔍 **Progress:** {completed}/{total} pages audited")
                     stat.markdown(f"📋 **Currently processing:** [`{current_url}`]({current_url})")
-                    stat.markdown(f"🚀 **Using {max_workers} parallel workers**")
                     
                     # Update ETA
                     elapsed = time.time() - start_time
@@ -131,7 +130,7 @@ def main():
                         remaining_pages = total - completed
                         remaining_time = avg_time_per_page * remaining_pages
                         mm, ss = divmod(int(remaining_time), 60)
-                        eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s** (multi-threaded)")
+                        eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s**")
                 
                 # Run multi-threaded audit
                 all_reports = audit_pages_multithreaded(
@@ -141,7 +140,7 @@ def main():
                 )
                 
                 bar.progress(1.0)
-                stat.markdown(f"✅ Multi-threaded audit complete! **{len(all_reports)}** pages audited in parallel")
+                st.markdown(f"✅Audit complete! **{len(all_reports)}** pages audited in parallel")
                 eta.empty()
 
                 # Save results to session
@@ -183,7 +182,17 @@ def main():
                     st.json(selected_page.get('report', {}), expanded=False)
         
         st.markdown("---")
-        
+        not_crawled_urls = [
+        r["url"]
+        for r in st.session_state["seo_data"]
+        if r.get("report", {}).get("page_not_crawled", False)
+    ]
+
+        if not_crawled_urls:
+            with st.expander(f"❌ Pages Not Crawled ({len(not_crawled_urls)})"):
+                for bad_url in not_crawled_urls:
+                    st.text(bad_url)
+    # ----------------------------------
         view = st.radio("Choose report view:", ["📈 Raw SEO Report", "📊 SEO Issues CSV", "🤖 AI SEO Summary"])
 
         if view == "📈 Raw SEO Report":
@@ -193,6 +202,7 @@ def main():
             st.markdown("### 📊 Comprehensive SEO Issues Report")
             
             comprehensive_df = convert_to_comprehensive_seo_csv(st.session_state["seo_data"])
+            binary_df = convert_to_binary_issue_csv(st.session_state["seo_data"])  # NEW
 
             if not comprehensive_df.empty:
                 # Calculate summary stats with proper handling of N/A values
@@ -221,18 +231,17 @@ def main():
                 if show_all:
                     display_df = comprehensive_df
                 else:
-                    # Only show issues with failures or category headers
                     display_df = comprehensive_df[
-                        (comprehensive_df['Failed checks'] == '') |  # Category headers
+                        (comprehensive_df['Failed checks'] == '') |
                         ((comprehensive_df['Failed checks'] != 'N/A') & 
                          (comprehensive_df['Failed checks'] != '') &
-                         (comprehensive_df['Failed checks'].astype(str) != '0'))  # Issues with failures
+                         (comprehensive_df['Failed checks'].astype(str) != '0'))
                     ]
                 
-                st.dataframe(display_df, use_container_width=True)
+                st.dataframe(fix_dataframe_for_streamlit(display_df), use_container_width=True)
                 
                 # Download buttons
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.download_button(
                         "📥 Download Complete SEO Issues CSV",
@@ -249,8 +258,18 @@ def main():
                             file_name=f"seo_issues_failures_{datetime.now().strftime('%Y%m%d')}.csv",
                             mime="text/csv"
                         )
+
+                # NEW: Binary CSV download
+                with col3:
+                    st.download_button(
+                        "📥 Download Binary Issues CSV",
+                        binary_df.to_csv(index=False).encode("utf-8"),
+                        file_name=f"seo_issues_binary_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
             else:
                 st.success("✅ No issues found across all audited pages.")
+
 
         else:  # AI SEO Summary
             def generate_summary():

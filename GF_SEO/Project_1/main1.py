@@ -17,7 +17,8 @@ from helpers import (
     convert_to_comprehensive_seo_csv,
     audit_pages_multithreaded,
     fix_dataframe_for_streamlit,
-    convert_to_binary_issue_csv
+    convert_to_binary_issue_csv,
+    full_seo_audit
 )
 
 def normalize_url(url: str) -> str:
@@ -68,7 +69,7 @@ def main():
     with col1:
         limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
     with col2:
-        max_workers = 4
+        max_workers = 2
 
 
     # Start button
@@ -132,12 +133,10 @@ def main():
                         mm, ss = divmod(int(remaining_time), 60)
                         eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s**")
                 
-                # Run multi-threaded audit
                 all_reports = audit_pages_multithreaded(
-                    urls_to_process, 
-                    max_workers=max_workers,
-                    progress_callback=progress_callback
-                )
+                    urls_to_audit=urls_to_process,
+                    max_workers=2,
+                    progress_callback=progress_callback )
                 
                 bar.progress(1.0)
                 st.markdown(f"✅Audit complete! **{len(all_reports)}** pages audited in parallel")

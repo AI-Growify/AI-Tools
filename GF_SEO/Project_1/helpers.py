@@ -1,93 +1,120 @@
 import sys
 import asyncio
-
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-import requests
+import random
 import time
 import tempfile
-import shutil   
-from concurrent.futures import ThreadPoolExecutor
-import threading
-import pandas as pd
-import matplotlib.pyplot as plt
-from typing import List
-from bs4 import BeautifulSoup
-import requests
-from textwrap import wrap
-import json
-import streamlit as st
+import shutil
 import os
-from dotenv import load_dotenv
+import json
 import re
-import time
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
-import requests
-import re
-import ssl
-import socket
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import List
 from urllib.parse import urlparse, urljoin
 from urllib import robotparser
-from bs4 import BeautifulSoup
-from datetime import datetime
-import hashlib
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from collections import Counter
-import multiprocessing as mp
 from threading import Lock
-import queue
-import threading
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import streamlit as st
+from dotenv import load_dotenv
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+
 
 load_dotenv()
 
 # Global cache with thread safety
 _http_head_cache: dict[str, int] = {}
 _cache_lock = Lock()
+
+# --- Global session with retry and 429-safe backoff ---
 _session = requests.Session()
+retry_strategy = Retry(
+    total=5,  # retry up to 5 times
+    backoff_factor=1,  # 1s, 2s, 4s, 8s, ...
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS"],
+    respect_retry_after_header=True  # KEY for 429s
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+_session.mount("http://", adapter)
+_session.mount("https://", adapter)
 
-def head_cached(url, timeout=5):
-    with _cache_lock:
-        code = _http_head_cache.get(url)
-    
-    if code is None:
-        try:
-            resp = _session.head(url, timeout=timeout, allow_redirects=True)
-            code = resp.status_code
-            if code == 405:
-                resp = _session.get(url, timeout=timeout, allow_redirects=True)
-                code = resp.status_code
-        except Exception:
-            code = 599
+def is_valid_http_url(url: str) -> bool:
+    """Check if URL uses HTTP/HTTPS scheme and is valid for requests"""
+    try:
+        parsed = urlparse(url)
+        return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+    except Exception:
+        return False
+
+def head_cached(url, timeout=10, retries=2):
+    # Skip non-HTTP/HTTPS URLs
+    if not is_valid_http_url(url):
+        print(f"⚠️ Skipping non-HTTP/HTTPS URL: {url}")
+        return None
         
-        with _cache_lock:
-            _http_head_cache[url] = code
-    
-    return code
+    for attempt in range(retries + 1):
+        try:
+            time.sleep(random.uniform(0.5, 1.3))  # throttle
+            resp = _session.head(url, timeout=timeout, allow_redirects=True)
 
-def head_cached_parallel(urls: list[str], max_workers: int = 12) -> dict[str, int]:
-    """Thread-safe parallel HEAD requests"""
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", 1))
+                print(f"⚠️ 429 for {url}, retrying after {retry_after}s")
+                time.sleep(retry_after+random.uniform(0.5,1.3))
+                continue
+            return resp
+        except Exception as e:
+            print(f"⚠️ HEAD error for {url}: {e}")
+            return None
+    return None
+
+
+import time, random
+
+def head_cached_parallel(urls: list[str], max_workers: int = 3, crawl_delay: float = 0.0) -> dict[str, int]:
     results: dict[str, int] = {}
-    
     to_fetch = []
+
+    # Filter out non-HTTP/HTTPS URLs before processing
+    valid_urls = []
+    for u in urls:
+        if is_valid_http_url(u):
+            valid_urls.append(u)
+        else:
+            print(f"⚠️ Skipping invalid URL scheme: {u}")
+            results[u] = -2  # Special code for invalid URLs
+
     with _cache_lock:
-        for u in urls:
+        for u in valid_urls:
             code = _http_head_cache.get(u)
             if code is not None:
                 results[u] = code
             else:
                 to_fetch.append(u)
-    
+
     if to_fetch:
         def _hc(u):
-            return u, head_cached(u)
-        
+            delay = crawl_delay if crawl_delay > 0 else random.uniform(0.3, 0.8)
+            time.sleep(delay)  # jitter to avoid burst
+            response = head_cached(u)
+            status = response.status_code if response else -1
+            return u, status
+
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             for u, code in pool.map(_hc, to_fetch):
                 results[u] = code
-    
+
     return results
+
 
 # Thread-safe duplicate tracking
 class ThreadSafeSets:
@@ -96,13 +123,14 @@ class ThreadSafeSets:
         self.descriptions = set()
         self.content_hashes = set()
         self.lock = Lock()
-    
+        self.h1_texts = set()
+        self.h2_texts = set()
     def check_and_add_title(self, title):
         with self.lock:
             is_duplicate = title in self.titles
             self.titles.add(title)
             return is_duplicate
-    
+     
     def check_and_add_description(self, desc):
         with self.lock:
             is_duplicate = desc in self.descriptions
@@ -114,6 +142,16 @@ class ThreadSafeSets:
             is_duplicate = content_hash in self.content_hashes
             self.content_hashes.add(content_hash)
             return is_duplicate
+    def check_and_add_h1(self, h1_text):
+        with self.lock:
+            is_dup = h1_text in self.h1_texts
+            self.h1_texts.add(h1_text)
+            return is_dup
+    def check_and_add_h2(self, h2_text):
+        with self.lock:
+            dup = h2_text in self.h2_texts
+            self.h2_texts.add(h2_text)
+            return dup
 
 def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
     """Show just the first items of a huge JSON list"""
@@ -131,8 +169,14 @@ def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
         file_name="seo_report.json",
         mime="application/json",
     )
+
 def robust_check_canonical_status(canonical_url, timeout=5):
     """Performs GET with retry on 429 and returns canonical status."""
+    # Skip non-HTTP/HTTPS URLs
+    if not is_valid_http_url(canonical_url):
+        print(f"⚠️ Skipping non-HTTP canonical URL: {canonical_url}")
+        return {"broken": True, "throttled": False, "status": -2}
+        
     headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-AuditBot/1.0)"}
     
     try:
@@ -220,7 +264,7 @@ def convert_to_binary_issue_csv(all_reports):
         report = page.get("report", {})
         issues = {}
 
-        # 1. Flat top-level boolean or non-zero values
+        # Basic types
         for key, val in report.items():
             if isinstance(val, bool):
                 issues[key] = int(val)
@@ -228,10 +272,13 @@ def convert_to_binary_issue_csv(all_reports):
                 issues[key] = 1
             elif isinstance(val, list) and len(val) > 0:
                 issues[key] = 1
-            elif isinstance(val, dict) and key not in {"headings", "images", "word_stats", "performance_metrics", "title", "description", "robots_txt", "https_info", "schema", "meta_robots", "audit_summary"}:
+            elif isinstance(val, dict) and key not in {
+                "headings", "images", "word_stats", "performance_metrics", "title",
+                "description", "robots_txt", "https_info", "schema", "meta_robots", "audit_summary"
+            }:
                 issues[key] = 1 if len(val) > 0 else 0
 
-        # 2. Special rules for nested structures
+        # Special nested checks
 
         # Headings
         headings = report.get("headings", {})
@@ -239,7 +286,8 @@ def convert_to_binary_issue_csv(all_reports):
             issues["missing_h1"] = 1 if headings.get("H1", 0) == 0 else 0
             issues["missing_h2"] = 1 if headings.get("H2", 0) == 0 else 0
             issues["multiple_h1"] = 1 if headings.get("H1", 0) > 1 else 0
-
+            issues["h2_sitewide_duplicate"] = 1 if report.get("h2_sitewide_duplicate") else 0
+            issues["h2_duplicate"] = 1 if report.get("h2_duplicate") else 0
         # Images
         images = report.get("images", {})
         if isinstance(images, dict):
@@ -247,6 +295,7 @@ def convert_to_binary_issue_csv(all_reports):
             issues["too_many_images"] = 1 if images.get("total_images", 0) > 50 else 0
             issues["broken_internal_images"] = 1 if len(images.get("broken_images", [])) > 0 else 0
             issues["broken_external_images"] = 1 if len(images.get("external_broken_images", [])) > 0 else 0
+            issues["image_name_missing"] = 1 if images.get("images_without_filename", 0) > 0 else 0
 
         # Word stats
         word_stats = report.get("word_stats", {})
@@ -274,15 +323,58 @@ def convert_to_binary_issue_csv(all_reports):
         # Meta robots tag
         meta_robots = report.get("meta_robots", "")
         if isinstance(meta_robots, str) and "noindex" in meta_robots.lower():
-            issues["meta_robots_noindex"] = 1
+            issues["page_not_indexed"] = 1
 
-        # Final cleanup
+        # Canonical
+        if report.get("canonical_pages_broken"):
+            issues["canonical_pages_broken"] = 1
+        if report.get("canonical_pages_throttled"):
+            issues["canonical_pages_throttled"] = 1
+        if report.get("canonical_external_domain"):
+            issues["canonical_external_domain"] = 1
+        if report.get("canonical_status") != 200:
+            issues["canonical_status_not_200"] = 1
+
+        # Title
+        title = report.get("title", {})
+        if isinstance(title, dict):
+            issues["missing_meta_title"] = 1 if title.get("text") == "Missing" else 0
+            issues["meta_title_over_60_chars"] = 1 if title.get("length", 0) > 60 else 0
+            issues["title_too_short"] = 1 if title.get("length", 0) < 10 else 0
+
+        # Description
+        description = report.get("description", {})
+        if isinstance(description, dict):
+            issues["meta_description_too_short"] = 1 if description.get("length", 0) < 50 else 0
+            issues["meta_description_over_160_chars"] = 1 if description.get("length", 0) > 160 else 0
+            issues["missing_meta_description"] = 1 if description.get("text") == "Missing" else 0
+            issues["meta_description_duplicate"] = 1 if description.get("duplicate") else 0
+
+        # URL-specific
+        if isinstance(url, str):
+            issues["url_over_70_chars"] = 1 if len(url) > 70 else 0
+            issues["url_contains_number"] = 1 if any(char.isdigit() for char in url) else 0
+            issues["url_contains_symbol"] = 1 if any(c in url for c in ['!', '@', '#', '$', '%', '^', '&', '*']) else 0
+
+        # Additional issue flags
+        issues["has_5xx_error"] = 1 if report.get("status_code", 200) >= 500 else 0
+        issues["has_4xx_error"] = 1 if 400 <= report.get("status_code", 200) < 500 else 0
+        issues["has_3xx_redirect"] = 1 if 300 <= report.get("status_code", 200) < 400 else 0
+
+        # Other expected flags
+        issues["nofollow_internal_links"] = 1 if report.get("nofollow_internal_links") else 0
+        issues["nofollow_external_links"] = 1 if report.get("nofollow_external_links") else 0
+        issues["orphaned_page"] = 1 if report.get("orphaned") else 0
+        issues["duplicate_page"] = 1 if report.get("is_duplicate") else 0
+        issues["duplicate_content_page"] = 1 if report.get("duplicate_content") else 0
+        issues["page_not_crawled"] = 1 if report.get("page_not_crawled") else 0
+        issues["crawl_depth_too_long"] = 1 if report.get("crawl_depth", 0) > 4 else 0
+
+        # Finalize
         all_issues.update(issues.keys())
         page_rows.append((url, issues))
 
     all_issues = sorted(all_issues)
-
-    # Build rows
     records = []
     for url, issues in page_rows:
         row = {"Page URL": url}
@@ -291,6 +383,7 @@ def convert_to_binary_issue_csv(all_reports):
         records.append(row)
 
     return pd.DataFrame(records)
+
 
 
 def _chrome_fallback(url, wait=0.5):
@@ -422,6 +515,18 @@ def get_urls_from_sitemap(sitemap_url):
     ]
     return list(filtered_urls)
 
+def is_supported_http_url(href: str) -> bool:
+        parsed = urlparse(href)
+        return parsed.scheme in ("http", "https", "")
+
+SOCIAL_DOMAINS = {
+            "facebook.com", "instagram.com", "twitter.com", "linkedin.com", "x.com",
+            "youtube.com", "pinterest.com", "tiktok.com", "wa.me", "web.whatsapp.com"
+        }  # "" = relative link
+def is_social_link(href: str) -> bool:
+        netloc = urlparse(href).netloc
+        return any(domain in netloc for domain in SOCIAL_DOMAINS)
+
 def full_seo_audit(url, shared_sets, html, response_headers=None, response_status=None, performance=None):
     """Complete enhanced SEO audit - Thread-safe version"""
     result = {}
@@ -500,7 +605,6 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             result["meta_description_too_short"] = True
         if len(desc_text) > 160:
             result["meta_description_too_long"] = True
-            result["meta_description_over_160_chars"] = True
 
         # Thread-safe duplicate checks
         if shared_sets.check_and_add_title(title_text):
@@ -573,12 +677,24 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
 
         h1_texts = headings["H1"]
         h2_texts = headings["H2"]
+        
+        # Check if H2s are repeated on the same page
+        if len(h2_texts) > len(set(h2_texts)):
+            result["h2_duplicate"] = True
+
+        # Check if any H2 is used on other pages
+        for txt in set(h2_texts):
+            if txt and shared_sets.check_and_add_h2(txt):
+                result["h2_sitewide_duplicate"] = True
+                break
         h1_text = h1_texts[0] if h1_texts else ""
         result["H1_content"] = h1_text
 
         if not h1_texts:
             result["missing_h1"] = True
             result["h1_missing"] = True
+        if h1_text and shared_sets.check_and_add_h1(h1_text):
+            result["h1_sitewide_duplicate"] = True
         if not h2_texts:
             result["missing_h2"] = True
             result["h2_missing"] = True
@@ -617,47 +733,42 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             result["non_secure_pages"] = True
 
         # External link checks
-        SOCIAL_DOMAINS = [
-            "facebook.com", "instagram.com", "twitter.com", "linkedin.com", "x.com",
-            "youtube.com", "pinterest.com", "tiktok.com", "wa.me", "web.whatsapp.com"
-        ]
-
         urls_to_test = []
         external_nofollow_links = []
 
         for a in anchor_tags:
             href = a.get("href")
-            if not href:
+            if not href or not is_supported_http_url(href):
                 continue
+
             full_url = urljoin(url, href)
             href_domain = urlparse(full_url).netloc
 
             if href_domain and href_domain != parsed_url.netloc:
+                if is_social_link(full_url):
+                    continue
                 if a.get("rel") and "nofollow" in a.get("rel"):
                     external_nofollow_links.append(full_url)
-
-                if any(s in href_domain for s in SOCIAL_DOMAINS):
-                    continue
-
-                if href_domain and href_domain != parsed_url.netloc:
+                # Only add valid HTTP/HTTPS URLs for testing
+                if is_valid_http_url(full_url):
                     urls_to_test.append(full_url)
 
-        external_broken_links = [
-            {"url": u, "status": code}
-            for u, code in head_cached_parallel(urls_to_test).items()
-            if code >= 400
-        ]
+        raw_external = head_cached_parallel(urls_to_test)
+        external_broken_links = []
+        for u, status in raw_external.items():
+            if status >= 400 and status != -2:  # Ignore invalid URL scheme status
+                external_broken_links.append({"url": u, "status": status})
 
         result["external_broken_links"] = external_broken_links
         result["external_nofollow_links"] = external_nofollow_links
-
+    
         # Internal link checks
         internal_nofollow_links = []
         internal_link_count = 0
 
         for a in anchor_tags:
             href = a.get("href")
-            if not href:
+            if not href or not is_supported_http_url(href):
                 continue
             full_url = urljoin(url, href)
             href_domain = urlparse(full_url).netloc
@@ -745,12 +856,19 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
         if images_missing_name > 0:
             result["images_missing_name"] = images_missing_name
 
-        image_urls = [urljoin(url, img.get("src")) for img in images[:10] if img.get("src")]
-        broken_images = [
-            {"src": u, "status": code}
-            for u, code in head_cached_parallel(image_urls).items()
-            if code >= 400
-        ]
+        # Only test valid HTTP/HTTPS image URLs
+        image_urls = []
+        for img in images[:10]:
+            if img.get("src"):
+                img_url = urljoin(url, img.get("src"))
+                if is_valid_http_url(img_url):
+                    image_urls.append(img_url)
+
+        raw = head_cached_parallel(image_urls)
+        broken_images = []
+        for u, status in raw.items():
+            if status >= 400 and status != -2:  # Ignore invalid URL scheme status
+                broken_images.append({"src": u, "status": status})
 
         external_broken_images = []
         for img in images[:20]:
@@ -758,9 +876,9 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             if src:
                 full_img_url = urljoin(url, src)
                 img_domain = urlparse(full_img_url).netloc
-                if img_domain != parsed_url.netloc:
+                if img_domain != parsed_url.netloc and is_valid_http_url(full_img_url):
                     status_code = head_cached_parallel([full_img_url]).get(full_img_url, 200)
-                    if status_code >= 400:
+                    if status_code >= 400 and status_code != -2:
                         external_broken_images.append({"src": full_img_url, "status": status_code})
 
         result["images"] = {
@@ -846,8 +964,8 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
         base_domain = parsed_url.netloc
         internal_urls = []
         skip_internal = [
-    "/cart", "/checkout", "/account", "/login", "/orders"
-]
+            "/cart", "/checkout", "/account", "/login", "/orders"
+        ]
         for a in anchor_tags:
             href = a.get("href")
             if not href:
@@ -856,13 +974,15 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
             # skip known unimportant paths
             if any(s in full_u.lower() for s in skip_internal):
                 continue
-            if urlparse(full_u).netloc == base_domain and full_u not in visited_urls:
+            if (urlparse(full_u).netloc                               == base_domain and 
+                full_u not in visited_urls and 
+                is_valid_http_url(full_u)):
                 visited_urls.add(full_u)
                 internal_urls.append(full_u)
 
         for link, code in head_cached_parallel(internal_urls).items():
-            # ignore 401, 403, 406
-            if code >= 400 and code not in (401, 403, 406):
+            # ignore 401, 403, 406 and invalid URL scheme
+            if code >= 400 and code not in (401, 403, 406, -2):
                 internal_errors.append({"url": link, "status": code})
 
         result["internal_link_errors"] = internal_errors
@@ -906,7 +1026,7 @@ def audit_single_page_worker(url, shared_sets):
     except Exception as e:
         return {"url": url, "report": {"error": str(e), "page_not_crawled": True}}
 
-def audit_pages_multithreaded(urls_to_audit, max_workers=4, progress_callback=None):
+def audit_pages_multithreaded(urls_to_audit, max_workers=2, progress_callback=None):
     """Main multi-threaded auditing function"""
     shared_sets = ThreadSafeSets()
     all_reports = []
@@ -965,6 +1085,12 @@ def extract_page_issues(report: dict) -> list[str]:
     if report.get("H1_content", "") == "":
         issues.append("no H1")
 
+    if report.get("h1_sitewide_duplicate"):
+        issues.append("H1 duplicated across pages")
+    if report.get("h2_sitewide_duplicate"):
+        issues.append("H2 duplicated across pages")
+    if report.get("h2_duplicate"):
+        issues.append("Duplicate H2 tags on this page")    
     if report.get("headings", {}).get("H1", 0) > 1:
         issues.append("multiple H1s")
 
@@ -1069,13 +1195,16 @@ def convert_to_comprehensive_seo_csv(seo_data: list[dict]) -> pd.DataFrame:
         # Heading issues
         if report.get('missing_h1') or report.get('h1_missing'): 
             issue_counts['h1_missing'] += 1
+        if report.get('h1_sitewide_duplicate'): 
+            issue_counts['h1_sitewide_duplicate'] += 1
+        if report.get('multiple_h1'): 
+            issue_counts['multiple_h1'] += 1
         if report.get('missing_h2') or report.get('h2_missing'): 
-            issue_counts['h2_missing'] += 1
-        if report.get('h1_duplicate'): 
-            issue_counts['h1_duplicate'] += 1
+            issue_counts['h2_missing'] += 1    
         if report.get('h2_duplicate'): 
             issue_counts['h2_duplicate'] += 1
-            
+        if report.get('h2_sitewide_duplicate'): 
+            issue_counts['h2_sitewide_duplicate'] += 1
         # Image issues
         if report.get('images_missing_name', 0) > 0: 
             issue_counts['image_name_missing'] += 1
@@ -1176,9 +1305,10 @@ def convert_to_comprehensive_seo_csv(seo_data: list[dict]) -> pd.DataFrame:
         {'Issue': 'Headings', 'Failed checks': '', 'Total checks': '', 'Percentage': ''},
         {'Issue': 'H1 is missing', 'Failed checks': issue_counts.get('h1_missing', 0), 'Total checks': total_pages, 'Percentage': safe_percentage(issue_counts.get('h1_missing', 0), total_pages)},
         {'Issue': 'H2 is missing', 'Failed checks': issue_counts.get('h2_missing', 0), 'Total checks': total_pages, 'Percentage': safe_percentage(issue_counts.get('h2_missing', 0), total_pages)},
-        {'Issue': 'H1 is duplicate', 'Failed checks': issue_counts.get('h1_duplicate', 0), 'Total checks': duplicate_h1_total, 'Percentage': safe_percentage(issue_counts.get('h1_duplicate', 0), duplicate_h1_total)},
+        {'Issue': 'H1 is duplicate across pages', 'Failed checks': issue_counts.get('h1_sitewide_duplicate', 0), 'Total checks': duplicate_h1_total, 'Percentage': safe_percentage(issue_counts.get('h1_sitewide_duplicate', 0), duplicate_h1_total)},
         {'Issue': 'H2 is duplicate', 'Failed checks': issue_counts.get('h2_duplicate', 0), 'Total checks': duplicate_h2_total, 'Percentage': safe_percentage(issue_counts.get('h2_duplicate', 0), duplicate_h2_total)},
-        
+        {'Issue': 'H2 is duplicate across pages', 'Failed checks': issue_counts.get('h2_sitewide_duplicate', 0), 'Total checks': duplicate_h2_total, 'Percentage': safe_percentage(issue_counts.get('h2_sitewide_duplicate', 0), duplicate_h2_total)},
+
         # IMAGES CATEGORY
         {'Issue': 'Images', 'Failed checks': '', 'Total checks': '', 'Percentage': ''},
         {'Issue': 'Image name is missing', 'Failed checks': issue_counts.get('image_name_missing', 0), 'Total checks': images_total, 'Percentage': safe_percentage(issue_counts.get('image_name_missing', 0), images_total)},

@@ -13,406 +13,19 @@ import pickle
 import warnings
 warnings.filterwarnings("ignore",message=".*ScriptRunContext.*")
 
+
 warnings.filterwarnings("ignore")
 ssl._create_default_https_context = ssl._create_unverified_context
 os.environ["STREAMLIT_DISABLE_WATCHDOG_WARNINGS"] = "true"
 
-def main():
-# Custom CSS for modern, smooth styling
-    st.markdown("""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        * {
-            font-family: 'Inter', sans-serif;
-        }
-        
-        /* Main app background */
-        .main {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
-        }
-        
-        /* Header styling - Modern glassmorphism */
-        .main-header {
-            background: rgba(255, 255, 255, 0.25);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 3rem 2rem;
-            margin-bottom: 2rem;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-        }
-        
-        .main-header h1 {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            letter-spacing: -0.02em;
-        }
-        
-        .main-header p {
-            color: #64748b;
-            font-size: 1.2rem;
-            margin: 0;
-            font-weight: 400;
-        }
-        
-        /* Sidebar styling - Clean and modern */
-        .sidebar-section {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            padding: 1.5rem;
-            border-radius: 16px;
-            margin-bottom: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-        }
-        
-        .sidebar-section:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        }
-        
-        .sidebar-section h3 {
-            color: #1e293b;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-        
-        .sidebar-section p {
-            color: #64748b;
-            margin: 0;
-            font-size: 0.9rem;
-        }
-        
-        /* Step containers - Modern card design */
-        .step-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-        
-        .step-container:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
-        
-        .step-number {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            margin-right: 1.5rem;
-            font-size: 1.5rem;
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-        }
-        
-        .step-content h3 {
-            margin: 0 0 0.5rem 0;
-            color: #1e293b;
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-        
-        .step-content p {
-            margin: 0;
-            color: #64748b;
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-        
-        /* Progress bar styling */
-        .stProgress > div > div > div > div {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
-        }
-        
-        .stProgress > div > div > div {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-        }
-        
-        /* Success/Error messages */
-        .stSuccess {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            border-radius: 12px;
-            border: none;
-        }
-        
-        .stError {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-            border-radius: 12px;
-            border: none;
-        }
-        
-        .stWarning {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: white;
-            border-radius: 12px;
-            border: none;
-        }
-        
-        .stInfo {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            color: white;
-            border-radius: 12px;
-            border: none;
-        }
-        
-        /* Button styling - Modern and interactive */
-        .stButton > button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 0.75rem 2rem;
-            font-weight: 600;
-            font-size: 1rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 14px rgba(102, 126, 234, 0.25);
-        }
-        
-        .stButton > button:hover {
-            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-        }
-        
-        .stButton > button:active {
-            transform: translateY(0);
-        }
-        
-        /* Info cards - Clean glassmorphism */
-        .info-card {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-        }
-        
-        .info-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
-        
-        .info-card h3 {
-            color: #1e293b;
-            margin-bottom: 1rem;
-            font-size: 1.4rem;
-            font-weight: 600;
-        }
-        
-        .info-card p {
-            color: #64748b;
-            margin: 0.5rem 0;
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-        
-        /* Features grid - Modern card layout */
-        .features-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin: 2rem 0;
-        }
-        
-        .feature-item {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            padding: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .feature-item:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
-        }
-        
-        .feature-item::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        .feature-item h4 {
-            color: #1e293b;
-            margin-bottom: 1rem;
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-        
-        .feature-item p {
-            color: #64748b;
-            margin: 0;
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-        
-        /* File uploader styling */
-        .stFileUploader > div > div > div > div {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(15px);
-            border: 2px dashed rgba(102, 126, 234, 0.3);
-            border-radius: 16px;
-            transition: all 0.3s ease;
-        }
-        
-        .stFileUploader > div > div > div > div:hover {
-            border-color: rgba(102, 126, 234, 0.6);
-            background: rgba(255, 255, 255, 0.95);
-        }
-        
-        /* Expander styling */
-        .streamlit-expanderHeader {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            transition: all 0.3s ease;
-        }
-        
-        .streamlit-expanderHeader:hover {
-            background: rgba(255, 255, 255, 0.95);
-        }
-        
-        /* Selectbox and input styling */
-        .stSelectbox > div > div > div > div {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .stNumberInput > div > div > input {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .stTextInput > div > div > input {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        /* Slider styling */
-        .stSlider > div > div > div > div {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        /* Results grid */
-        .results-container {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-top: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Footer styling */
-        .footer {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(15px);
-            border-radius: 20px;
-            padding: 2rem;
-            margin-top: 3rem;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        
-        .footer p {
-            color: #64748b;
-            margin: 0.5rem 0;
-            font-size: 1rem;
-        }
-        
-        .footer strong {
-            color: #1e293b;
-        }
-        
-        /* Smooth animations */
-        * {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        /* Hide Streamlit branding */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-    @st.cache_resource
-    def load_yolo_model():
-        return YOLO("yolov8n-seg.pt")
-
-    model = load_yolo_model()
-
-    # =================== Utility Functions ===================
-    def preprocess_uploaded_image(img, max_dim=2048):
+def preprocess_uploaded_image(img, max_dim=2048):
         if max(img.size) > max_dim:
             ratio = max_dim / max(img.size)
             img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.LANCZOS)
         return img.convert("RGB")
 
-    def optimize_image(img, max_size_kb):
+
+def optimize_image(img, max_size_kb):
         buf = io.BytesIO()
         q = 95
         img.save(buf, "JPEG", quality=q, optimize=True, progressive=True)
@@ -423,7 +36,8 @@ def main():
         buf.seek(0)
         return buf
 
-    def enhanced_subject_detection_for_mp(img_array):
+
+def enhanced_subject_detection_for_mp(img_array):
         """Modified version for multiprocessing that uses numpy array instead of PIL Image"""
         # Load model inside the function for multiprocessing
         local_model = YOLO("yolov8n-seg.pt")
@@ -454,7 +68,8 @@ def main():
             return (x0, y0, x1, y1)
         return None
 
-    def smart_resize_preserve_background(image, bbox, target_size, top_space=0, bottom_space=0):
+
+def smart_resize_preserve_background(image, bbox, target_size, top_space=0, bottom_space=0):
         img_w, img_h = image.size
         target_w, target_h = target_size
         target_ratio = target_w / target_h
@@ -483,7 +98,8 @@ def main():
         cropped = image.crop((left, top, right, bottom))
         return cropped.resize(target_size, Image.LANCZOS)
 
-    def add_black_glow_around_logo(base_img, logo_img, x_px, y_px, blur_radius=8, glow_opacity=100):
+
+def add_black_glow_around_logo(base_img, logo_img, x_px, y_px, blur_radius=8, glow_opacity=100):
         base = base_img.convert("RGBA")
         logo = logo_img.convert("RGBA")
         w, h = logo.size
@@ -501,7 +117,8 @@ def main():
         base.paste(logo, (x_px, y_px), logo)
         return base.convert("RGB")
 
-    def add_blur_background_under_logo(base_img, logo_img, x_px, y_px, blur_radius=10, mask_margin=5):
+
+def add_blur_background_under_logo(base_img, logo_img, x_px, y_px, blur_radius=10, mask_margin=5):
         base = base_img.convert("RGBA")
         logo = logo_img.convert("RGBA")
         w, h = logo.size
@@ -514,7 +131,8 @@ def main():
         base.paste(blended, (x_px, y_px))
         return base.convert("RGB")
 
-    def merge_logos_horizontally(logo1, logo2, padding=20, separator_text="×", separator_font_size=40):
+
+def merge_logos_horizontally(logo1, logo2, padding=20, separator_text="×", separator_font_size=40):
         try:
             font = ImageFont.truetype("arial.ttf", separator_font_size)
         except:
@@ -541,8 +159,9 @@ def main():
 
         return merged
 
+
     # =================== Multiprocessing Function ===================
-    def process_single_image(args):
+def process_single_image(args):
         """
         Process a single image with all the branding effects.
         This function is designed to work with multiprocessing.
@@ -628,6 +247,522 @@ def main():
         except Exception as e:
             return (filename, None, str(e))
 
+def main():
+
+    # Enhanced CSS with modern design system
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        /* Global Variables */
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --dark-bg: #0f1419;
+            --card-bg: #1a202c;
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --border-color: #2d3748;
+            --accent-blue: #4299e1;
+            --accent-purple: #9f7aea;
+            --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.12);
+            --shadow-medium: 0 8px 32px rgba(0, 0, 0, 0.18);
+            --border-radius: 16px;
+            --border-radius-small: 8px;
+        }
+        
+        /* Base Styling */
+        .main {
+            background: var(--dark-bg);
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .stApp {
+            background: var(--dark-bg);
+        }
+        
+        /* Main Header */
+        .hero-header {
+            background: var(--primary-gradient);
+            padding: 1rem 0.5rem 2rem 0.5rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="150" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="0.5" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+        
+        .hero-header h1 {
+            color: var(--text-primary);
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 0.3rem;
+            text-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .hero-header p {
+            color: rgba(255,255,255,0.9);
+            font-size: 1.25rem;
+            font-weight: 400;
+            margin: 0;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Feature Cards */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        
+        .feature-card {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary-gradient);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-medium);
+            border-color: var(--accent-blue);
+        }
+        
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+        
+        .feature-card h4 {
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin: 0;
+        }
+        
+        /* Sidebar Styling */
+        .css-1d391kg {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border-color);
+        }
+        
+        .sidebar-section {
+            background: var(--primary-gradient);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sidebar-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            transform: translate(30px, -30px);
+        }
+        
+        .sidebar-section h3 {
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .sidebar-section p {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin: 0;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Upload Area */
+        .upload-container {
+            background: var(--card-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .upload-container:hover {
+            border-color: var(--accent-blue);
+            background: rgba(66, 153, 225, 0.05);
+        }
+        
+        .upload-container::before {
+            content: '📸';
+            font-size: 3rem;
+            display: block;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+        }
+        
+        /* File Upload Styling */
+        .stFileUploader > div > div {
+            background: transparent !important;
+            border: none !important;
+        }
+        
+        .stFileUploader label {
+            color: var(--text-primary) !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Image Grid */
+        .image-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .image-preview-card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius-small);
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+        
+        .image-preview-card:hover {
+            transform: scale(1.02);
+            box-shadow: var(--shadow-soft);
+        }
+        
+        /* Process Button */
+        .process-button-container {
+            display: flex;
+            justify-content: center;
+            margin: 3rem 0;
+        }
+        
+        .process-button {
+            background: var(--success-gradient) !important;
+            border: none !important;
+            border-radius: 50px !important;
+            padding: 1rem 3rem !important;
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            color: white !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            box-shadow: var(--shadow-soft) !important;
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        .process-button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: var(--shadow-medium) !important;
+        }
+        
+        .process-button::before {
+            content: '⚡';
+            margin-right: 0.5rem;
+        }
+        
+        /* Results Section */
+        .results-header {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            margin: 2rem 0;
+            text-align: center;
+        }
+        
+        .results-header h2 {
+            color: var(--text-primary);
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        .result-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        
+        .result-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-medium);
+            border-color: var(--accent-purple);
+        }
+        
+        .result-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        
+        .result-card-content {
+            padding: 1.5rem;
+        }
+        
+        .result-card-title {
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+        
+        .result-card-meta {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+        
+        /* Download Buttons */
+        .download-button {
+            background: var(--secondary-gradient) !important;
+            border: none !important;
+            border-radius: var(--border-radius-small) !important;
+            padding: 0.75rem 1.5rem !important;
+            color: white !important;
+            font-weight: 500 !important;
+            transition: all 0.3s ease !important;
+            width: 100% !important;
+        }
+        
+        .download-button:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: var(--shadow-soft) !important;
+        }
+        
+        .batch-download {
+            background: var(--warning-gradient) !important;
+            border-radius: 50px !important;
+            padding: 1rem 2rem !important;
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            margin: 2rem auto !important;
+            display: block !important;
+        }
+        
+        /* Progress Indicators */
+        .stProgress > div > div > div > div {
+            background: var(--success-gradient) !important;
+            border-radius: 10px !important;
+        }
+        
+        /* Status Cards */
+        .status-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            margin: 1.5rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .status-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--success-gradient);
+        }
+        
+        .status-card h3 {
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .status-card p {
+            color: var(--text-secondary);
+            margin: 0;
+            line-height: 1.6;
+        }
+        
+        /* Success/Error Messages */
+        .stSuccess {
+            background: var(--success-gradient) !important;
+            color: white !important;
+            border-radius: var(--border-radius-small) !important;
+            border: none !important;
+        }
+        
+        .stError {
+            background: var(--secondary-gradient) !important;
+            color: white !important;
+            border-radius: var(--border-radius-small) !important;
+            border: none !important;
+        }
+        
+        .stWarning {
+            background: var(--warning-gradient) !important;
+            color: var(--dark-bg) !important;
+            border-radius: var(--border-radius-small) !important;
+            border: none !important;
+        }
+        
+        /* Form Controls */
+        .stSelectbox > div > div {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: var(--border-radius-small) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .stNumberInput > div > div > input {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: var(--border-radius-small) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .stSlider > div > div > div > div {
+            background: var(--primary-gradient) !important;
+        }
+        
+        .stTextInput > div > div > input {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: var(--border-radius-small) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        /* Expander Styling */
+        .streamlit-expanderHeader {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: var(--border-radius-small) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .streamlit-expanderContent {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            border-top: none !important;
+            border-radius: 0 0 var(--border-radius-small) var(--border-radius-small) !important;
+        }
+        
+        /* Footer */
+        .footer {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .footer h3 {
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .footer p {
+            color: var(--text-secondary);
+            margin: 0.25rem 0;
+        }
+        
+        /* Hide Streamlit Elements */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        .stDeployButton {display: none;}
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero-header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero-header p {
+                font-size: 1rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+    @st.cache_resource
+    def load_yolo_model():
+        return YOLO("yolov8n-seg.pt")
+
+
+    model = load_yolo_model()
+
+
+    # =================== Utility Functions ===================
+    
+
+
     # =================== UI State ===================
     if "upload_key" not in st.session_state:
         st.session_state.upload_key = 0
@@ -636,193 +771,212 @@ def main():
     if "results" not in st.session_state:
         st.session_state.results = []
 
+
     # =================== Main UI ===================
 
-    # Header
+    # Hero Header
     st.markdown("""
-    <div class="main-header">
-        <h1>🎯 AI-Powered Smart Cropper + Brand Generator</h1>
-        <p>Professional image processing with intelligent cropping, branding, and batch optimization</p>
+    <div class="hero-header">
+        <h1>Snipster</h1>
+        <p>Your Smart Image Resizing Assistant</p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Features overview
+    # Feature Cards
     st.markdown("""
-    <div class="features-list">
-        <div class="feature-item">
-            <h4>🎨 Professional Branding</h4>
-            <p>Add logos, text overlays, and visual effects with pixel-perfect positioning</p>
+    <div class="features-grid">
+        <div class="feature-card">
+            <h4>Professional Branding</h4>
+            <p>Add logos, text overlays, and stunning visual effects with pixel-perfect positioning and advanced blending modes.</p>
         </div>
-        <div class="feature-item">
-            <h4>⚡ Batch Processing</h4>
-            <p>Process multiple images simultaneously with parallel computing</p>
-        </div>
-        <div class="feature-item">
-            <h4>📐 Smart Cropping</h4>
-            <p>Intelligent aspect ratio handling while preserving important visual elements</p>
+        <div class="feature-card">
+            <h4>Lightning-Fast Batch Processing</h4>
+            <p>Process hundreds of images simultaneously using intelligent parallel computing for maximum efficiency.</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Sidebar Configuration
+    # Enhanced Sidebar
     with st.sidebar:
         st.markdown("""
         <div class="sidebar-section">
-            <h3>🎛️ Control Center</h3>
-            <p>Configure your image processing pipeline</p>
+            <h3>Tools & Settings    </h3>
+            <p>Configure your image processing pipeline with precision</p>
         </div>
         """, unsafe_allow_html=True)
         
         mode = st.selectbox(
             "Processing Mode:",
-            ["🎯 Smart Cropper + Branding"],
-            help="Select your desired processing mode"
+            ["Smart Cropper + Branding"],
+            help="Select your desired processing workflow"
         )
         
-        if st.button("🗑️ Clear All Files", help="Reset all uploaded files and results"):
+        if st.button("🗑️ Clear All Files", help="Reset all uploaded files and results", type="secondary"):
             st.session_state.upload_key += 1
             st.session_state.stored_files = []
             st.session_state.results = []
             st.rerun()
 
-    # Main workflow steps
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        files = st.file_uploader(
+        
+    files = st.file_uploader(
             "Choose image files",
             type=["jpg","jpeg","png"],
             accept_multiple_files=True,
             key=f"up_{st.session_state.upload_key}",
-            help="Select one or more images to process"
+            help="Select one or more images to process (JPG, JPEG, PNG supported)",
+            label_visibility="collapsed"
         )
         
-        if files:
-            st.session_state.stored_files = files
-            st.success(f"✅ {len(files)} file(s) uploaded successfully!")
+    if files:
+        st.session_state.stored_files = files
+        st.success(f"Successfully uploaded {len(files)} file(s)!")
             
-            # Show preview of uploaded files
-            with st.expander("📁 View Uploaded Files", expanded=False):
-                cols = st.columns(min(4, len(files)))
-                for i, file in enumerate(files[:4]):  # Show first 4 images
-                    with cols[i]:
-                        img = Image.open(file)
-                        st.image(img, caption=file.name, use_container_width=True)
-                if len(files) > 4:
-                    st.info(f"... and {len(files) - 4} more files")
+            # Enhanced image preview
+        with st.expander("Preview Uploaded Images", expanded=True):
+            st.markdown('<div class="image-preview-grid">', unsafe_allow_html=True)
+                
+            # Create columns for image grid
+            cols = st.columns(min(4, len(files)))
+            for i, file in enumerate(files[:8]):  # Show first 8 images
+                col_idx = i % len(cols)
+                with cols[col_idx]:
+                    img = Image.open(file)
+                    st.image(img, caption=f"{file.name}", use_container_width=True)
+                        
+            if len(files) > 8:
+                st.info(f"... and {len(files) - 8} more files ready for processing")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    with col2:
-        if st.session_state.stored_files:
-            st.markdown("""
-            <div class="info-card">
-                <h3>📊 Upload Summary</h3>
-                <p><strong>Files:</strong> {}</p>
-                <p><strong>Status:</strong> Ready to process</p>
-            </div>
-            """.format(len(st.session_state.stored_files)), unsafe_allow_html=True)
 
-    # Sidebar settings (same logic, better organized)
-    if mode == "🎯 Smart Cropper + Branding":
+    # Enhanced Sidebar Configuration
+    if mode == "Smart Cropper + Branding":
         with st.sidebar:
             st.markdown("---")
             
             # Output Configuration
             st.markdown("""
             <div class="sidebar-section">
-                <h3>📐 Output Configuration</h3>
+                <h3>Quick Controls</h3>
+                <p>Configure dimensions and quality</p>
             </div>
             """, unsafe_allow_html=True)
-            
-            with st.expander("🎯 Dimensions & Quality", expanded=True):
-                tw = st.number_input("Width (pixels)", 512, 4096, 1200, 100)
-                th = st.number_input("Height (pixels)", 512, 4096, 1800, 100)
-                max_kb = st.number_input("Max File Size (KB)", 100, 5000, 800, 50)
+
+            with st.expander("Dimensions & Quality", expanded=True):
+                col_w, col_h = st.columns(2)
+                with col_w:
+                    tw = st.number_input("Width (px)", 512, 4096, 1200, 100, help="Output image width")
+                with col_h:
+                    th = st.number_input("Height (px)", 512, 4096, 1800, 100, help="Output image height")
                 
-                # Show aspect ratio
+                max_kb = st.number_input("Max File Size (KB)", 100, 5000, 800, 50, help="Optimize file size")
+                
+                # Enhanced aspect ratio display
                 aspect_ratio = round(tw/th, 2)
-                st.info(f"📏 Aspect Ratio: {aspect_ratio}:1")
+                if aspect_ratio == 0.67:
+                    ratio_name = "Portrait (2:3)"
+                elif aspect_ratio == 1.0:
+                    ratio_name = "Square (1:1)"
+                elif aspect_ratio == 1.33:
+                    ratio_name = "Standard (4:3)"
+                elif aspect_ratio == 1.78:
+                    ratio_name = "Widescreen (16:9)"
+                else:
+                    ratio_name = f"Custom ({aspect_ratio}:1)"
+                
+                st.success(f"Aspect Ratio: **{ratio_name}**")
 
-            with st.expander("⚡ Performance Settings", expanded=False):
-                max_workers = st.slider("Parallel Processes", 1, 8, 4, 1)
-                st.info(f"🚀 Using {max_workers} processes for faster processing")
+            with st.expander("Performance Settings", expanded=False):
+                max_workers = st.slider("Parallel Processes", 1, 8, 4, 1, help="More processes = faster processing")
+                st.info(f"Using {max_workers} parallel processes")
 
-            with st.expander("🧠 Smart Cropping", expanded=False):
-                use_space = st.checkbox("Add Head/Foot Space", help="Add extra space around detected subject")
+            with st.expander("Cropping", expanded=False):
+                use_space = st.checkbox("Add Head/Foot Space", help="Add extra breathing room around detected subjects")
                 if use_space:
-                    ts = st.number_input("Top Space (pixels)", 0, 1000, 10)
-                    bs = st.number_input("Bottom Space (pixels)", 0, 1000, 10)
+                    col_ts, col_bs = st.columns(2)
+                    with col_ts:
+                        ts = st.number_input("Top Space (px)", 0, 1000, 10)
+                    with col_bs:
+                        bs = st.number_input("Bottom Space (px)", 0, 1000, 10)
                 else:
                     ts = bs = 0
 
-            # Branding Configuration
+            # Enhanced Branding Configuration
             st.markdown("---")
             st.markdown("""
             <div class="sidebar-section">
-                <h3>🎨 Branding & Design</h3>
+                <h3>Branding & Design</h3>
+                <p>Add professional branding elements</p>
             </div>
             """, unsafe_allow_html=True)
-            
-            with st.expander("🖼️ Logo Settings", expanded=True):
+
+            with st.expander("Logo Settings", expanded=True):
                 collab_mode = st.checkbox("Collaboration Mode", help="Merge two logos for collaboration posts")
                 
                 if collab_mode:
-                    logo_file1 = st.file_uploader("First Logo", type=["png","jpg","jpeg"], key="logo1_up")
-                    logo_file2 = st.file_uploader("Second Logo", type=["png","jpg","jpeg"], key="logo2_up")
+                    st.markdown("**Upload Collaboration Logos:**")
+                    col_l1, col_l2 = st.columns(2)
+                    with col_l1:
+                        logo_file1 = st.file_uploader("First Logo", type=["png","jpg","jpeg"], key="logo1_up")
+                    with col_l2:
+                        logo_file2 = st.file_uploader("Second Logo", type=["png","jpg","jpeg"], key="logo2_up")
                     
                     if logo_file1 and logo_file2:
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.image(logo_file1, caption="Logo 1", width=100)
-                        with col_b:
-                            st.image(logo_file2, caption="Logo 2", width=100)
+                        col_prev1, col_prev2 = st.columns(2)
+                        with col_prev1:
+                            st.image(logo_file1, caption="Logo 1", width=80)
+                        with col_prev2:
+                            st.image(logo_file2, caption="Logo 2", width=80)
                     
-                    merge_padding = st.slider("Logo Spacing", 0, 100, 20)
-                    separator_text = st.text_input("Separator Symbol", value="×")
+                    merge_padding = st.slider("Logo Spacing", 0, 100, 20, help="Space between logos")
+                    separator_text = st.text_input("Separator Symbol", value="×", help="Symbol between logos")
                     separator_font_size = st.slider("Symbol Size", 10, 200, 40)
                 else:
-                    logo_file = st.file_uploader("Upload Logo", type=["png","jpg","jpeg"], key="logo_up")
+                    logo_file = st.file_uploader("Upload Logo", type=["png","jpg","jpeg"], key="logo_up", help="PNG files work best for transparency")
                     if logo_file:
-                        st.image(logo_file, caption="Logo Preview", width=150)
+                        st.image(logo_file, caption="Logo Preview", width=120)
 
                 if (collab_mode and logo_file1 and logo_file2) or (not collab_mode and logo_file):
                     st.markdown("**Logo Positioning:**")
-                    col_scale, col_pos = st.columns(2)
-                    with col_scale:
-                        scale = st.slider("Size (% of width)", 5, 50, 30)
-                    with col_pos:
-                        x_off = st.slider("Horizontal Position", 0, 100, 50)
-                        y_off = st.slider("Vertical Position", 0, 100, 90)
+                    scale = st.slider("Size (% of width)", 5, 50, 30, help="Logo size relative to image width")
+                    
+                    col_x, col_y = st.columns(2)
+                    with col_x:
+                        x_off = st.slider("Horizontal", 0, 100, 50, help="0=Left, 50=Center, 100=Right")
+                    with col_y:
+                        y_off = st.slider("Vertical", 0, 100, 90, help="0=Top, 50=Middle, 100=Bottom")
 
-            with st.expander("✨ Visual Effects", expanded=False):
-                shadow = st.checkbox("Enable Logo Shadow", value=True)
+            with st.expander("Visual Effects", expanded=False):
+                shadow = st.checkbox("Enable Logo Shadow", value=True, help="Add depth with shadow effects")
                 if shadow:
                     col_sr, col_so = st.columns(2)
                     with col_sr:
-                        sr = st.slider("Shadow Blur", 2, 50, 25)
+                        sr = st.slider("Shadow Blur", 2, 50, 25, help="Shadow softness")
                     with col_so:
-                        so = st.slider("Shadow Opacity", 0, 100, 30)
+                        so = st.slider("Shadow Opacity", 0, 100, 30, help="Shadow intensity")
                 else:
                     sr = so = 0
                     
-                bgblur = st.checkbox("Background Blur Under Logo")
+                bgblur = st.checkbox("Background Blur Under Logo", help="Blur background behind logo for better visibility")
                 if bgblur:
                     col_br, col_mm = st.columns(2)
                     with col_br:
-                        br = st.slider("Blur Radius", 1, 50, 10)
+                        br = st.slider("Blur Radius", 1, 50, 10, help="Blur intensity")
                     with col_mm:
-                        mm = st.slider("Mask Margin", 1, 50, 5)
+                        mm = st.slider("Mask Margin", 1, 50, 5, help="Blur area size")
                 else:
                     br = mm = 0
 
-            with st.expander("🖋️ Text Overlay", expanded=False):
-                overlay_text = st.text_input("Overlay Text", placeholder="Enter text to overlay...")
-                
+            with st.expander("Text Overlay", expanded=False):
+                overlay_text = st.text_input("Overlay Text", placeholder="Enter text to overlay on images...")
+
                 if overlay_text:
+                    st.markdown("**Text Styling:**")
                     col_size, col_color = st.columns(2)
                     with col_size:
                         text_size = st.slider("Font Size", 10, 200, 40)
                     with col_color:
-                        text_color = st.color_picker("Text Color", "#FFFFFF")
+                        text_color = st.color_picker("Text Color", "#FFFFFF", help="Choose text color")
                     
                     font_family = st.selectbox(
                         "Font Family",
@@ -834,31 +988,25 @@ def main():
                             "Facundo",
                             "Felidae",
                             "Edwardian Script ITC"
-                        ]
+                        ],
+                        help="Select font style"
                     )
                     
+                    st.markdown("**Text Position:**")
                     col_tx, col_ty = st.columns(2)
                     with col_tx:
-                        text_x_pct = st.slider("Text Horizontal Position", 0, 100, 50)
+                        text_x_pct = st.slider("Horizontal", 0, 100, 50, key="text_x")
                     with col_ty:
-                        text_y_pct = st.slider("Text Vertical Position", 0, 100, 95)
+                        text_y_pct = st.slider("Vertical", 0, 100, 95, key="text_y")
 
-    # Step 3: Processing
-    if st.session_state.stored_files:
-        st.markdown("""
-        <div class="step-container">
-            <div class="step-number">1</div>
-            <div class="step-content">
-                <h3>Process Your Images</h3>
-                <p>Apply your configured settings to all uploaded images</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Enhanced Processing Section
+        st.markdown("---")
         
-        # Processing button with enhanced styling
-        process_col1, process_col2, process_col3 = st.columns([1, 2, 1])
-        with process_col2:
-            if st.button("🚀 Start Processing", help="Begin processing all uploaded images", use_container_width=True):
+        # Processing button with better styling
+        if st.session_state.stored_files:
+            if st.button("Start Processing", help="Begin processing all uploaded images", type="primary", use_container_width=True):
+                # Processing logic starts here...
+                
                 # Prepare logo image
                 logo_img_bytes = None
                 if collab_mode and logo_file1 and logo_file2:
@@ -923,19 +1071,23 @@ def main():
                 # Create arguments list for multiprocessing
                 args_list = [(file_data, params) for file_data in file_data_list]
 
-                # Processing status display
+                # Enhanced processing status display
                 st.markdown("""
-                <div class="info-card">
-                    <h3>⚙️ Processing Status</h3>
-                    <p>Processing {} images with {} parallel processes...</p>
+                <div class="status-card">
+                    <h3>Processing In Progress</h3>
+                    <p>Processing <strong>{}</strong> images using <strong>{}</strong> parallel processes...</p>
                 </div>
                 """.format(len(file_data_list), max_workers), unsafe_allow_html=True)
 
-                # Process images in parallel with real-time progress updates
+                # Process images with enhanced progress tracking
                 progress_container = st.container()
                 with progress_container:
                     progress_bar = st.progress(0)
                     status_text = st.empty()
+                    time_text = st.empty()
+
+                    import time
+                    start_time = time.time()
 
                     try:
                         if __name__ == "__main__" or True:  # Added for Streamlit compatibility
@@ -950,9 +1102,14 @@ def main():
                                     completed += 1
                                     progress = completed / total
                                     progress_bar.progress(progress)
-                                    status_text.text(f"🔄 Processed {completed}/{total} images...")
+                                    
+                                    elapsed = time.time() - start_time
+                                    if completed > 0:
+                                        eta = (elapsed / completed) * (total - completed)
+                                        status_text.text(f"Processed {completed}/{total} images...")
+                                        time_text.text(f"Time: {elapsed:.1f}s | ETA: {eta:.1f}s")
                             
-                            # Filter out any failed results
+                            # Filter results
                             successful_results = []
                             failed_results = []
                             
@@ -964,119 +1121,126 @@ def main():
                                     failed_results.append((filename, buf_or_error))
                             
                             progress_bar.progress(1.0)
-                            status_text.text("✅ Processing complete!")
+                            total_time = time.time() - start_time
+                            status_text.text("Processing Complete!")
+                            time_text.text(f"Completed in {total_time:.1f} seconds")
                             
                             if failed_results:
-                                st.warning(f"⚠️ Failed to process {len(failed_results)} images:")
+                                st.warning(f"Failed to process {len(failed_results)} images:")
                                 for filename, error in failed_results:
-                                    st.error(f"❌ {filename}: {error}")
+                                    st.error(f"{filename}: {error}")
                             
                             if successful_results:
-                                st.success(f"🎉 Successfully processed {len(successful_results)} images!")
+                                st.success(f"Successfully processed {len(successful_results)} images!")
                                 st.session_state.results = successful_results
                             else:
-                                st.error("❌ No images were processed successfully.")
+                                st.error("No images were processed successfully.")
                                 st.session_state.results = []
                                 
                     except Exception as e:
-                        st.error(f"❌ Multiprocessing error: {str(e)}")
-                        st.info("🔄 Falling back to sequential processing...")
+                        st.error(f"Multiprocessing error: {str(e)}")
+                        st.info("Falling back to sequential processing...")
                         
-                        # Fallback to sequential processing with progress
+                        # Fallback processing
                         results = []
                         for i, args in enumerate(args_list):
                             result = process_single_image(args)
                             results.append(result)
                             progress = (i + 1) / len(args_list)
                             progress_bar.progress(progress)
-                            status_text.text(f"🔄 Processed {i + 1}/{len(args_list)} images...")
-                        
-                        progress_bar.progress(1.0)
-                        status_text.text("✅ Sequential processing complete!")
-                        st.session_state.results = [r for r in results if r[1] is not None]
+                            status_text.text(f"Processing {i + 1}/{len(args_list)} images...")
 
-    # Step 4: Results
-    if st.session_state.results:
-        st.markdown("""
-        <div class="step-container">
-            <div class="step-number">2</div>
-            <div class="step-content">
-                <h3>Download Your Results</h3>
-                <p>Preview and download your processed images individually or as a batch</p>
+                        progress_bar.progress(1.0)
+                        status_text.text("Sequential processing complete!")
+                        st.session_state.results = [r for r in results if r[1] is not None]
+            
+        else:
+            st.markdown("""
+            <div class="status-card">
+                <h3>No Files Uploaded</h3>
+                <p>Please upload some images to begin processing.</p>
             </div>
+            """, unsafe_allow_html=True)
+
+    # Enhanced Results Section
+    if st.session_state.results:
+        st.markdown("---")
+        
+        # Results header
+        st.markdown("""
+        <div class="results-header">
+            <h2>Processing Results</h2>
+            <p>Your processed images are ready for download</p>
         </div>
         """, unsafe_allow_html=True)
         
-        # Results summary
-        st.markdown("""
-        <div class="info-card">
-            <h3>📊 Processing Results</h3>
-            <p><strong>Successfully processed:</strong> {} images</p>
-            <p><strong>Total file size:</strong> {} KB (estimated)</p>
-            <p><strong>Ready for download</strong> ✅</p>
-        </div>
-        """.format(
-            len(st.session_state.results),
-            sum(len(buf.getvalue()) for _, _, buf in st.session_state.results) // 1024
-        ), unsafe_allow_html=True)
-        
-        # Batch download section
-        st.markdown("### 📦 Batch Download")
-        
-        # Create ZIP file for batch download
+            # Create ZIP file for batch download
         z = io.BytesIO()
         with zipfile.ZipFile(z, "w") as zf:
             for name, _, buf in st.session_state.results:
                 zf.writestr(f"branded_{name}", buf.getvalue())
         z.seek(0)
+            
+        st.download_button(
+            "Download All Images (ZIP)",
+            data=z.getvalue(),
+            file_name="snipster_processed_images.zip",
+            mime="application/zip",
+            help="Download all processed images as a ZIP file",
+            type="primary",
+            use_container_width=True
+        )
         
-        download_col1, download_col2, download_col3 = st.columns([1, 2, 1])
-        with download_col2:
-            st.download_button(
-                "📥 Download All Images (ZIP)",
-                data=z.getvalue(),
-                file_name="branded_images.zip",
-                mime="application/zip",
-                use_container_width=True,
-                help="Download all processed images as a ZIP file"
-            )
-        
-        # Individual results grid
-        st.markdown("### 🖼️ Individual Results")
+        # Individual results with enhanced grid
+        st.markdown("### Individual Results")
+        st.markdown('<div class="results-grid">', unsafe_allow_html=True)
         
         # Create responsive grid
-        cols_per_row = 4
-        num_results = len(st.session_state.results)
-        
-        for i in range(0, num_results, cols_per_row):
-            cols = st.columns(cols_per_row)
-            for j, (name, img, buf) in enumerate(st.session_state.results[i:i+cols_per_row]):
+    cols_per_row = 3
+    num_results = len(st.session_state.results)
+    for i in range(0, num_results, cols_per_row):
+        cols = st.columns(cols_per_row)
+        for j, (name, img, buf) in enumerate(st.session_state.results[i:i+cols_per_row]):
+            if j < len(cols):
                 with cols[j]:
-                    
-                    # Display image
+                        # Result card
+                    st.markdown('<div class="result-card">', unsafe_allow_html=True)                    
+                        # Display image
                     st.image(img, use_container_width=True)
-                    
-                    # Image info
+                        
+                        # Card content
+                    st.markdown('<div class="result-card-content">', unsafe_allow_html=True)
+                        
+                        # File info
                     file_size_kb = len(buf.getvalue()) // 1024
-                    st.caption(f"📏 {img.width}×{img.height} • 📁 {file_size_kb} KB")
-                    
-                    # Download button
-                    st.download_button(
-                        "💾 Download",
-                        data=buf.getvalue(),
-                        file_name=f"branded_{name}",
-                        mime="image/jpeg",
-                        key=f"dl_{i}_{j}",
-                        use_container_width=True,
-                        help=f"Download {name}"
-                    )
+                    st.markdown(f"""
+                    <div class="result-card-title">{name}</div>
+                    <div class="result-card-meta">
+                        {img.width}×{img.height} pixels<br>
+                        {file_size_kb} KB
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    # Footer
+                        # Download button
+                    st.download_button(
+                        "Download",
+                            data=buf.getvalue(),
+                            file_name=f"snipster_{name}",
+                            mime="image/jpeg",
+                            key=f"dl_{i}_{j}",
+                            use_container_width=True,
+                            help=f"Download {name}"
+                        )
+
+    # Enhanced Footer
     st.markdown("---")
     st.markdown("""
     <div class="footer">
-        <p>🎯 <strong>AI-Powered Smart Cropper + Brand Generator</strong></p>
-        <p>Professional image processing with intelligent automation</p>
-        <p>Built with modern web technologies for optimal performance</p>
+        <h3>Snipster - AI Image Assistant</h3>
+        <p><strong>Professional image processing with intelligent automation</strong></p>
+        <p>Smart Cropping • Professional Branding • Lightning Fast Processing</p>
     </div>
     """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()

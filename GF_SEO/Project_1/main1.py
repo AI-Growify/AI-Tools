@@ -60,14 +60,40 @@ def convert_to_pdf(html: str) -> bytes:
 
 def main():
     st.title("MetaScan - SEO Site   Audit")
+    with st.expander("How to Use This Tool"):
+        st.markdown("""
+        **Welcome to MetaScan - SEO Site Auditor**  
+        This tool helps you scan and analyze your website for SEO issues and performance improvements.
 
+        **How it works:**
+        1. Enter your homepage URL (e.g., `https://example.com`).
+        2. Choose whether to use sitemap.xml for page discovery (faster and recommended).
+        3. Optionally, limit the crawl to 200 pages for quicker results.
+        4. Click **Get Sitemap URLs** to preview the pages that will be audited.
+        5. Click **Start Auditing** to run the SEO checks.
+
+        **What you'll get:**
+        - Detailed raw SEO reports for each page.
+        - SEO Issues CSV with failed checks and a binary pass/fail version.
+        - AI SEO Summary with prioritized issues and recommendations.
+
+        **Features:**
+        - Multi-threaded crawling for faster audits.
+        - AI-powered insights with downloadable PDF summaries.
+        - CSV exports for comprehensive issue tracking.
+
+        **Tips:**
+        - Use the sitemap option for faster and more complete audits.
+        - Limit the crawl when testing before running a full audit.
+        - Review the AI summary for quick overviews, but use the raw data for deep analysis.
+        """)
     # UI controls
     start_url = st.text_input("Enter the homepage URL (e.g., https://example.com)")
-    use_sitemap = st.checkbox("🔍 Use sitemap.xml for page discovery (faster, recommended)", value=True)
+    use_sitemap = st.checkbox("Use sitemap.xml for page discovery (faster, recommended)", value=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        limit_pages = st.checkbox("✅ Limit crawl to 200 pages max?")
+        limit_pages = st.checkbox("Limit crawl to 200 pages max?")
     with col2:
         max_workers = 2
 
@@ -104,7 +130,7 @@ def main():
         with st.expander("Click to view URLs"):
             st.dataframe(fix_dataframe_for_streamlit(pd.DataFrame(urls_to_audit, columns=["URL"])))
 
-        if st.button("🚀 Start Auditing"):
+        if st.button("Start Auditing"):
             # 2) MULTI-THREADED: Audit pages with performance metrics
             with st.spinner("Site Audit in progress..."):
                 
@@ -122,7 +148,7 @@ def main():
                     progress = completed / total
                     bar.progress(progress)
                     stat.markdown(f"🔍 **Progress:** {completed}/{total} pages audited")
-                    stat.markdown(f"📋 **Currently processing:** [`{current_url}`]({current_url})")
+                    stat.markdown(f"**Currently processing:** [`{current_url}`]({current_url})")
                     
                     # Update ETA
                     elapsed = time.time() - start_time
@@ -131,7 +157,7 @@ def main():
                         remaining_pages = total - completed
                         remaining_time = avg_time_per_page * remaining_pages
                         mm, ss = divmod(int(remaining_time), 60)
-                        eta.markdown(f"⏳ Estimated time left: **{mm} m {ss} s**")
+                        eta.markdown(f"Estimated time left: **{mm} m {ss} s**")
                 
                 all_reports = audit_pages_multithreaded(
                     urls_to_audit=urls_to_process,
@@ -139,7 +165,7 @@ def main():
                     progress_callback=progress_callback )
                 
                 bar.progress(1.0)
-                st.markdown(f"✅Audit complete! **{len(all_reports)}** pages audited in parallel")
+                st.markdown(f"Audit complete! **{len(all_reports)}** pages audited in parallel")
                 eta.empty()
 
                 # Save results to session
@@ -188,17 +214,17 @@ def main():
     ]
 
         if not_crawled_urls:
-            with st.expander(f"❌ Pages Not Crawled ({len(not_crawled_urls)})"):
+            with st.expander(f"Pages Not Crawled ({len(not_crawled_urls)})"):
                 for bad_url in not_crawled_urls:
                     st.text(bad_url)
     # ----------------------------------
         view = st.radio("Choose report view:", ["📈 Raw SEO Report", "📊 SEO Issues CSV", "🤖 AI SEO Summary"])
 
-        if view == "📈 Raw SEO Report":
+        if view == "Raw SEO Report":
             display_wrapped_json(st.session_state["seo_data"])
 
-        elif view == "📊 SEO Issues CSV":
-            st.markdown("### 📊 Comprehensive SEO Issues Report")
+        elif view == "SEO Issues CSV":
+            st.markdown("### Comprehensive SEO Issues Report")
             
             comprehensive_df = convert_to_comprehensive_seo_csv(st.session_state["seo_data"])
             binary_df = convert_to_binary_issue_csv(st.session_state["seo_data"])  # NEW
@@ -243,7 +269,7 @@ def main():
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.download_button(
-                        "📥 Download Complete SEO Issues CSV",
+                        "Download Complete SEO Issues CSV",
                         comprehensive_df.to_csv(index=False).encode("utf-8"),
                         file_name=f"seo_issues_complete_{datetime.now().strftime('%Y%m%d')}.csv",
                         mime="text/csv"
@@ -252,7 +278,7 @@ def main():
                 with col2:
                     if not display_df.empty:
                         st.download_button(
-                            "📥 Download Issues with Failures Only",
+                            "Download Issues with Failures Only",
                             display_df.to_csv(index=False).encode("utf-8"),
                             file_name=f"seo_issues_failures_{datetime.now().strftime('%Y%m%d')}.csv",
                             mime="text/csv"
@@ -261,13 +287,13 @@ def main():
                 # NEW: Binary CSV download
                 with col3:
                     st.download_button(
-                        "📥 Download Binary Issues CSV",
+                        "Download Binary Issues CSV",
                         binary_df.to_csv(index=False).encode("utf-8"),
                         file_name=f"seo_issues_binary_{datetime.now().strftime('%Y%m%d')}.csv",
                         mime="text/csv"
                     )
             else:
-                st.success("✅ No issues found across all audited pages.")
+                st.success("No issues found across all audited pages.")
 
 
         else:  # AI SEO Summary
@@ -277,7 +303,7 @@ def main():
                     st.session_state["page_issues_map"]
                 )
 
-            if st.button("♻️ Regenerate AI Summary") or st.session_state.get("ai_summary") is None:
+            if st.button("Regenerate AI Summary") or st.session_state.get("ai_summary") is None:
                 with st.spinner("Generating AI summary..."):
                     st.session_state["ai_summary"] = generate_summary()
                     st.session_state["ai_summary_time"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
@@ -286,14 +312,14 @@ def main():
             gen_t = st.session_state.get("ai_summary_time", "")
             html = build_html_summary(markdown_to_html(raw), start_url)
 
-            st.markdown("### 🤖 AI SEO Summary Preview")
+            st.markdown("### AI SEO Summary Preview")
             if gen_t:
                 st.caption(f"Last generated: {gen_t}")
 
             st.markdown(raw)
 
             st.download_button(
-                "📅 Download SEO Summary as PDF",
+                "Download SEO Summary as PDF",
                 convert_to_pdf(html),
                 "seo_summary.pdf",
                 mime="application/pdf",

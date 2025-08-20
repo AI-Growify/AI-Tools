@@ -5,7 +5,7 @@ import streamlit as st
 import pyrebase
 import firebase_admin
 from firebase_admin import credentials, firestore
-import requests
+import requests 
 import time
 import json
 from dotenv import load_dotenv
@@ -73,13 +73,13 @@ try:
     pb = pyrebase.initialize_app(firebase_config)
     firebase_auth = pb.auth()
 except Exception as e:
-    st.error(f"❌ Firebase init error: {e}")
+    st.error(f"Firebase init error: {e}")
     st.stop()
 
 if not firebase_admin._apps:
     service_account_json = os.getenv("FIREBASE_ADMIN_JSON")
     if not service_account_json:
-        st.error("❌ FIREBASE_ADMIN_JSON environment variable is not set!")
+        st.error("FIREBASE_ADMIN_JSON environment variable is not set!")
         st.stop()
 
     try:
@@ -92,7 +92,7 @@ if not firebase_admin._apps:
         cred = credentials.Certificate(parsed)
         firebase_admin.initialize_app(cred)
     except Exception as e:
-        st.error(f"❌ Failed to initialize Firebase Admin SDK: {e}")
+        st.error(f"Failed to initialize Firebase Admin SDK: {e}")
         st.stop()
 
 
@@ -117,7 +117,7 @@ def log_user_logout(user_id):
     logout_time = time.time()
     session_doc_id = st.session_state.get('session_doc_id')
     if not session_doc_id:
-        st.warning("⚠️ Session ID not found. Unable to log logout time.")
+        st.warning("Session ID not found. Unable to log logout time.")
         return
 
     session_ref = db.collection('user_activity').document(user_id).collection('sessions').document(session_doc_id)
@@ -231,8 +231,8 @@ else:
 
     # ─── Home Screen ──────────────────────────────────────────────────────────
     def render_home():
-        st.title("🧰 Growify Master AI Toolkit")
-        st.markdown("#### 👇 Select a tool to get started")
+        st.title("Growify Master AI Toolkit")
+        st.markdown("#### Select a tool to get started")
         col1, col2, col3 = st.columns(3)
         with col1:
             st.button("Promptly", use_container_width=True, on_click=lambda: st.session_state.update(tool="blog"))

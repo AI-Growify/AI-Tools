@@ -13,33 +13,33 @@ from dotenv import load_dotenv  # ✅ Added for .env support
 def main():
     # ---------- CONFIG ----------
     st.title("PROMPTLY - The AI Blog Idea Generator")
-    with st.expander("ℹ️ How to Use This Tool"):
+    with st.expander("How to Use This Tool"):
         st.markdown("""
         **Welcome to PROMPTLY - The AI Blog Idea Generator!**  
         This tool is designed for content strategists and marketing teams to instantly brainstorm **fresh, engaging blog ideas** tailored to your brand.
 
-        **📌 How it works:**
+        **How it works:**
         - Select your **brand** from the list. All saved details (description, website, example blogs) will load automatically.
         - Optionally add **extra notes** about campaigns, seasonal themes, or target audiences.
         - Click **"Generate Blog Ideas"** to instantly get **5 unique, high-quality blog titles** designed to match premium fashion/lifestyle content standards.
 
-        **⚡ What the tool does:**
+        **What the tool does:**
         - Crawls the brand’s website to extract **internal product/category pages**.
         - Analyzes site content to extract **relevant, non-branded keywords**.
         - Uses advanced AI to craft **original, non-repetitive blog titles** suitable for high-end audiences.
         - Ensures topics encourage **natural internal linking** (e.g., "explore our latest collection") without sounding forced or generic.
 
-        **✅ Features:**
+        **Features:**
         - Always generates **different and creative** ideas on each run.
         - Designed for **high-end fashion, lifestyle, and luxury brands**.
         - Keeps suggestions **non-branded** to expand SEO reach and customer interest.
 
-        **💡 Tips:**
+        **Tips:**
         - Add extra notes to fine-tune ideas for campaigns or seasons.
         - Review the extracted keywords for insight into your site's current content themes.
         - Use the generated titles as inspiration for blogs, ad copies, or social posts.
 
-        Ready to brainstorm like a pro? 🚀
+        Ready to brainstorm like a pro?
         """)
 
     # ---------- LOAD BRAND DATA ----------
@@ -50,15 +50,15 @@ def main():
     brand_names = list(brand_dict.keys())
 
     # ---------- SELECT BRAND ----------
-    selected_brand = st.selectbox("🔍 Select a Brand", brand_names)
+    selected_brand = st.selectbox("Select a Brand", brand_names)
     brand_info = brand_dict[selected_brand]
     brand_desc = brand_info.get("description", "")
     brand_example_blogs = brand_info.get("example_blogs", "")
 
     # ---------- ADDITIONAL NOTES ----------
-    user_notes = st.text_area("📝 Additional Brand Notes (optional)", "")
+    user_notes = st.text_area("Additional Brand Notes (optional)", "")
 
-    st.subheader("📌 Brand Overview")
+    st.subheader("Brand Overview")
     with st.expander("Show Brand Info"):
         for key, value in brand_info.items():
             st.markdown(f"**{key.replace('_', ' ').title()}**: {value}")
@@ -132,18 +132,18 @@ def main():
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
     if not GEMINI_API_KEY:
-        st.error("❌ Gemini API key not found. Please add it to your `.env` file as `GEMINI_API_KEY=...`")
+        st.error("Gemini API key not found. Please add it to your `.env` file as `GEMINI_API_KEY=...`")
         return
 
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
     # ---------- GENERATE BLOG IDEAS ----------
-    if st.button("🧠 Generate Blog Ideas"):
+    if st.button("Generate Blog Ideas"):
         with st.spinner("Crawling website and crafting unique blog ideas..."):
             website_url = brand_info.get("website", "")
             if not website_url:
-                st.error("❌ Website URL not found.")
+                st.error("Website URL not found.")
             else:
                 urls, text_data, keywords = cached_crawl_and_keywords(website_url)
 
@@ -181,9 +181,9 @@ Ensure every title is blog-ready — catchy, crisp, and impactful.
                     response = model.generate_content(blog_idea_prompt)
                     blog_ideas = response.text.strip()
                 except Exception as e:
-                    blog_ideas = f"❌ Error generating blog ideas: {e}"
+                    blog_ideas = f"Error generating blog ideas: {e}"
 
-                st.subheader("🎯 Blog Ideas")
+                st.subheader("Blog Ideas")
                 st.markdown(blog_ideas)
 
 # Optional standalone runner

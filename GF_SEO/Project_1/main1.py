@@ -113,7 +113,7 @@ def main():
                 sitemap_url = start_url.rstrip("/") + "/sitemap.xml"
                 urls_to_audit = [normalize_url(u) for u in get_urls_from_sitemap(sitemap_url)]
                 if not urls_to_audit:
-                    st.error("❌ No URLs found in sitemap or sitemap is inaccessible.")
+                    st.error("No URLs found in sitemap or sitemap is inaccessible.")
                     return
             else:
                 urls_to_audit = [normalize_url(start_url)]
@@ -185,12 +185,12 @@ def main():
                 sequential_estimate = len(all_reports) * 5  # Estimate 5s per page sequentially
                 speedup = sequential_estimate / elapsed_total if elapsed_total > 0 else 1
                 
-                st.success(f"✅ Audit complete in {elapsed_total:.1f}s! Estimated {speedup:.1f}x faster than sequential processing.")
+                st.success(f"Audit complete in {elapsed_total:.1f}s! Estimated {speedup:.1f}x faster than sequential processing.")
 
     # Report views
     if "seo_data" in st.session_state:
         # URL dropdown available across all views
-        st.markdown("### 🔗 Audited URLs")
+        st.markdown("### Audited URLs")
         urls_audited = [page_data.get('url', '') for page_data in st.session_state["seo_data"]]
         
         selected_url = st.selectbox(
@@ -218,7 +218,7 @@ def main():
                 for bad_url in not_crawled_urls:
                     st.text(bad_url)
     # ----------------------------------
-        view = st.radio("Choose report view:", ["📈 Raw SEO Report", "📊 SEO Issues CSV", "🤖 AI SEO Summary"])
+        view = st.radio("Choose report view:", ["Raw SEO Report", "SEO Issues CSV", "AI SEO Summary"])
 
         if view == "Raw SEO Report":
             display_wrapped_json(st.session_state["seo_data"])

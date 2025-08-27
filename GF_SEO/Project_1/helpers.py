@@ -58,7 +58,7 @@ def is_valid_http_url(url: str) -> bool:
 def head_cached(url, timeout=10, retries=2):
     # Skip non-HTTP/HTTPS URLs
     if not is_valid_http_url(url):
-        print(f"⚠️ Skipping non-HTTP/HTTPS URL: {url}")
+        print(f"Skipping non-HTTP/HTTPS URL: {url}")
         return None
         
     for attempt in range(retries + 1):
@@ -68,12 +68,12 @@ def head_cached(url, timeout=10, retries=2):
 
             if resp.status_code == 429:
                 retry_after = int(resp.headers.get("Retry-After", 1))
-                print(f"⚠️ 429 for {url}, retrying after {retry_after}s")
+                print(f"429 for {url}, retrying after {retry_after}s")
                 time.sleep(retry_after+random.uniform(0.5,1.3))
                 continue
             return resp
         except Exception as e:
-            print(f"⚠️ HEAD error for {url}: {e}")
+            print(f"HEAD error for {url}: {e}")
             return None
     return None
 
@@ -90,7 +90,7 @@ def head_cached_parallel(urls: list[str], max_workers: int = 3, crawl_delay: flo
         if is_valid_http_url(u):
             valid_urls.append(u)
         else:
-            print(f"⚠️ Skipping invalid URL scheme: {u}")
+            print(f"Skipping invalid URL scheme: {u}")
             results[u] = -2  # Special code for invalid URLs
 
     with _cache_lock:
@@ -156,7 +156,7 @@ class ThreadSafeSets:
 def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
     """Show just the first items of a huge JSON list"""
     if not data:
-        st.write("⛔️ No data to display.")
+        st.write("No data to display.")
         return
     
     preview_block = data[:preview]
@@ -164,7 +164,7 @@ def display_wrapped_json(data: list[dict], preview: int = 10) -> None:
     st.caption(f"Showing the first {len(preview_block)} of {len(data)} pages")
     
     st.download_button(
-        "📥 Download full SEO report (JSON)",
+        "Download full SEO report (JSON)",
         json.dumps(data, indent=2),
         file_name="seo_report.json",
         mime="application/json",
@@ -174,7 +174,7 @@ def robust_check_canonical_status(canonical_url, timeout=5):
     """Performs GET with retry on 429 and returns canonical status."""
     # Skip non-HTTP/HTTPS URLs
     if not is_valid_http_url(canonical_url):
-        print(f"⚠️ Skipping non-HTTP canonical URL: {canonical_url}")
+        print(f"Skipping non-HTTP canonical URL: {canonical_url}")
         return {"broken": True, "throttled": False, "status": -2}
         
     headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-AuditBot/1.0)"}
@@ -244,7 +244,7 @@ def robust_page_fetcher(url, wait=0.5):
         return html, performance_data
         
     except Exception as e:
-        print(f"⚠️ HTTP request failed for {url}: {e}")
+        print(f"HTTP request failed for {url}: {e}")
         
         # Method 2: Fallback to ChromeDriver only if necessary
         return _chrome_fallback(url, wait)
@@ -421,11 +421,11 @@ def _chrome_fallback(url, wait=0.5):
                 'method_used': 'chrome'
             }
             
-            print(f"✅ Successfully rendered {url} via Chrome")
+            print(f"Successfully rendered {url} via Chrome")
             return html, performance_data
             
         except Exception as e:
-            print(f"❌ Chrome fallback failed for {url}: {e}")
+            print(f"Chrome fallback failed for {url}: {e}")
             return None, None
             
         finally:
@@ -472,7 +472,7 @@ def get_urls_from_sitemap(sitemap_url):
                 r.raise_for_status()
                 return BeautifulSoup(r.content, "xml")
             except Exception as e:
-                print(f"❌ Failed to fetch sitemap {url}: {e}")
+                print(f"Failed to fetch sitemap {url}: {e}")
                 return None
         return None
 
@@ -618,7 +618,7 @@ def full_seo_audit(url, shared_sets, html, response_headers=None, response_statu
         page_text = " ".join(soup.stripped_strings)
         text_hash = hash(page_text)
         if shared_sets.check_and_add_content_hash(text_hash):
-            result["duplicate_content"] = True
+            result["duplicate_content"] = True 
             result["duplicate_content_page"] = True
 
         # Document structure checks
@@ -1428,4 +1428,4 @@ issues_block: {issues_block}
         data = response.json()
         return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
-        return f"❌ Error during Gemini API call: {e}\n\nDetails: {response.text}"
+        return f"Error during Gemini API call: {e}\n\nDetails: {response.text}"

@@ -15,7 +15,7 @@ if GEMINI_API_KEY:
 
 def generate_keywords(seed_keyword, location):
     if not GEMINI_API_KEY:
-        st.error("⚠️ Gemini API key not found.")
+        st.error("Gemini API key not found.")
         return None
 
     prompt = f"""
@@ -108,43 +108,43 @@ def parse_response_to_dataframe(response_text):
 def main():
     st.title("SEO Keyword Explorer")
     
-    with st.expander("ℹ️ How to Use This Tool"):
+    with st.expander("How to Use This Tool"):
         st.markdown("""
         **Welcome to the SEO Keyword Explorer!**  
         Use this AI-powered tool to discover high-quality, non-branded keyword ideas for SEO campaigns.
 
-        **📌 How it works:**
+        **How it works:**
         - Enter your **Seed Keyword** (e.g., *designer lehenga*).
         - Select your **Target Location** (e.g., India, UAE, USA).
         - Click **"Generate Keywords"** to get 100 AI-suggested, **non-branded** keywords.
 
-        **⚡ What you'll get:**
+        **What you'll get:**
         - Keywords with realistic **Search Volume**, **CPC (USD)**, **Paid Difficulty**, **SEO Difficulty**, and **Search Intent** (Informational, Commercial, Transactional).
         - An **Opportunity Score** calculated to help prioritize the best keywords.
         - Results sorted to highlight the most valuable opportunities for your strategy.
 
-        **✅ Features:**
+        **Features:**
         - 100% Non-branded suggestions (ideal for generic and long-tail targeting).
         - Support for multiple locations (India, UAE, UK, USA, Australia, Singapore, or custom input).
         - **Download** results as a CSV for easy integration into your SEO workflow.
 
-        **💡 Tips:**
+        **Tips:**
         - Focus on high Opportunity Score keywords with strong volume and manageable difficulty.
         - Use generated keywords in your content strategy, Google Ads campaigns, or SEO briefs.
         - Experiment with different seed terms to expand your coverage of relevant topics.
 
-        Enjoy optimizing! 🚀
+        Enjoy optimizing!
         """)
     
     col1, col2 = st.columns([2, 1])
     with col1:
-        seed_keyword = st.text_input("🔍 Seed Keyword", placeholder="e.g., designer lehenga")
+        seed_keyword = st.text_input("Seed Keyword", placeholder="e.g., designer lehenga")
     with col2:
-        location = st.selectbox("🌍 Location", ["India", "UAE", "UK", "USA", "Australia", "Singapore", "Custom"])
+        location = st.selectbox("Location", ["India", "UAE", "UK", "USA", "Australia", "Singapore", "Custom"])
         if location == "Custom":
-            location = st.text_input("✏️ Enter Custom Location", placeholder="e.g., Dubai, London")
+            location = st.text_input("Enter Custom Location", placeholder="e.g., Dubai, London")
 
-    if st.button("🚀 Generate Keywords") and seed_keyword:
+    if st.button("Generate Keywords") and seed_keyword:
         with st.spinner("Generating keyword suggestions..."):
             response = generate_keywords(seed_keyword, location)
             if response:
@@ -155,11 +155,11 @@ def main():
     df = st.session_state.get("gemini_keywords")
 
     if df is not None:
-        st.subheader("📊 Keyword Suggestions (Ranked by Opportunity Score)")
+        st.subheader("Keyword Suggestions (Ranked by Opportunity Score)")
         st.dataframe(df, use_container_width=True)
 
         csv_data = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download CSV", data=csv_data, file_name="ai_keywords.csv")
+        st.download_button("Download CSV", data=csv_data, file_name="ai_keywords.csv")
 
 if __name__ == "__main__":
     main()

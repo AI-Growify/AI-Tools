@@ -96,12 +96,12 @@ def main():
     # ------------------ Streamlit UI ------------------
    
     st.title("PitchKit: Designer Lead Extractor")
-    with st.expander("ℹ️ How to Use This Tool"):
+    with st.expander("How to Use This Tool"):
         st.markdown("""
         **Welcome to PitchKit: Designer Lead Extractor!**  
         This tool is designed for marketing teams, agencies, and brand managers who want to **quickly research and collect leads** for designer brands and boutiques.
 
-        **📌 What this tool can do:**
+        **What this tool can do:**
         - **Scrape contact details** (emails, phones, social links) from designer/boutique websites.
         - **Look up Instagram handles** to get follower counts, bio, verification, and business status.
         - **Calculate Instagram engagement rates** for any public profile.
@@ -131,13 +131,13 @@ def main():
         - Select a link to see its **CMS platform** (e.g., Shopify).
         - Click **"Scrape Contact"** to get emails, phones, social links from that site.
 
-        **💡 Tips:**
+        **Tips:**
         - Use official brand sites for best contact accuracy.
         - For Instagram lookups, ensure profiles are public.
         - Engagement rate calculator uses a live web scraper — be patient!
         - CMS detection helps you identify e-commerce platforms for partnership or competitor research.
 
-        Ready to grow your lead pipeline? 🚀
+        Ready to grow your lead pipeline? 
         """)
 
     # Input website URLs
@@ -157,12 +157,12 @@ def main():
 
         if scraped_results:
             df = pd.DataFrame(scraped_results)
-            st.subheader("📄 Extracted Contact Information")
+            st.subheader("Extracted Contact Information")
             st.dataframe(df)
 
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download CSV",
+                label="Download CSV",
                 data=csv,
                 file_name="contact_details.csv",
                 mime="text/csv"
@@ -171,7 +171,7 @@ def main():
             st.warning("No data was extracted from the provided URLs.")
 
     # ------------------ Instagram & Designer Info Section ------------------
-    st.header("📊 PitchKit Insights – Instagram & Designer Intelligence")
+    st.header("PitchKit Insights – Instagram & Designer Intelligence")
     st.markdown(
     "<p style='font-size: 20px; color: gray;'>Uncover designer trends, social handles, and Instagram insights – all in one place.</p>",
     unsafe_allow_html=True
@@ -192,7 +192,7 @@ def main():
         st.session_state.selected_links = {}
 
     # Instagram Info Section
-    st.markdown("### 📸 Instagram Handle Lookup")
+    st.markdown("### Instagram Handle Lookup")
     st.session_state["insta_usernames"] = st.text_area(
         "Enter Instagram Handles (comma separated)",
         value=st.session_state["insta_usernames"]
@@ -226,7 +226,7 @@ def main():
         st.dataframe(st.session_state["insta_info"])
 
     # Engagement Rate Section
-    st.markdown("### 📊 Engagement Rate Calculator")
+    st.markdown("### Engagement Rate Calculator")
     st.session_state["username"] = st.text_input(
         "Enter Instagram Handle (single)",
         value=st.session_state["username"]
@@ -288,7 +288,7 @@ def main():
         st.success(f"Engagement Rate: {st.session_state['engagement_rate']}")
 
     # Designer Search + CMS Detection
-    st.markdown("### 🎨 Designer Search Links + CMS Detection")
+    st.markdown("### Designer Search Links + CMS Detection")
     st.session_state["designer_names"] = st.text_area(
         "Enter Designer Names (one per line)",
         value=st.session_state["designer_names"]
@@ -366,9 +366,9 @@ def main():
                 if st.button(f"Scrape Contact for {name}", key=f"scrape_{name}"):
                     data = scrape_website(selected_link)
                     if data:
-                        st.write("📧 Emails:", data['emails'])
-                        st.write("📱 Phones:", data['phones'])
-                        st.write("🌐 Socials:", data['social_links'])
+                        st.write("Emails:", data['emails'])
+                        st.write("Phones:", data['phones'])
+                        st.write("Socials:", data['social_links'])
             else:
                 st.warning(f"No valid links found for {name}.")
 

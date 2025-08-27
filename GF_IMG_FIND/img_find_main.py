@@ -93,30 +93,30 @@ def extract_images_from_zip(zip_file):
 def main():
     st.title("PixelMatch")
     
-    with st.expander("ℹ️ How to Use This Tool"):
+    with st.expander("How to Use This Tool"):
         st.markdown("""
         **Welcome to PixelMatch!**  
         This AI-powered tool helps you find **visually similar images** in your reference library, perfect for cataloging, e-commerce, and creative teams.
 
-        **📌 How it works:**
+        **How it works:**
         - Upload your **Query Image** (the image you want to find similar matches for).
         - Upload your **Reference Images** (your internal database/library) either as:
         - Multiple individual images
         - A single ZIP folder containing multiple images
         - Optionally, preview your reference images before matching.
 
-        **⚡ Matching Process:**
+        **Matching Process:**
         - The AI model extracts deep features from your images.
         - It compares your query image with all reference images.
         - It shows **matches with 80%+ similarity**, ranked by similarity score.
 
-        **✅ Features:**
+        **Features:**
         - Fully supports batch processing via ZIP upload.
         - Displays clear **similarity percentages** for all matches.
         - Lets you set a **custom base name** for matched images.
         - Packages all matched images into a **downloadable ZIP** with new naming.
 
-        **💡 Tips:**
+        **Tips:**
         - Use high-resolution images for best results.
         - Make sure your reference library has clear, well-lit images.
         - Try different query images if you get no matches.
@@ -125,7 +125,7 @@ def main():
         """)
 
     # Query Image Section
-    st.subheader("🎯 Query Image")
+    st.subheader("Query Image")
     uploaded_query = st.file_uploader("Upload the image to find matches for", type=['jpg', 'jpeg', 'png'])
     
     # Show query image preview
@@ -134,7 +134,7 @@ def main():
         st.image(uploaded_query, use_column_width=True, caption="Your Query Image")
     
     # Reference Images Section (now below query image)
-    st.subheader("📚 Reference Images")
+    st.subheader("Reference Images")
     upload_method = st.radio("Choose upload method:", ["Multiple Images", "ZIP Folder"], horizontal=True)
     
     if upload_method == "Multiple Images":
@@ -147,7 +147,7 @@ def main():
         if uploaded_zip:
             uploaded_refs, ref_files_dict = extract_images_from_zip(uploaded_zip)
             if uploaded_refs:
-                st.success(f"✅ Extracted {len(uploaded_refs)} images")
+                st.success(f"Extracted {len(uploaded_refs)} images")
             else:
                 uploaded_refs = []
         else:
@@ -156,13 +156,13 @@ def main():
     
     # Preview reference images button
     if 'uploaded_refs' in locals() and uploaded_refs:
-        if st.button(f"👁️ Preview Reference Images ({len(uploaded_refs)} files)", use_container_width=True):
+        if st.button(f"Preview Reference Images ({len(uploaded_refs)} files)", use_container_width=True):
             st.session_state.show_refs = not st.session_state.get('show_refs', False)
     
     # Show reference images preview if button clicked
     if uploaded_refs and st.session_state.get('show_refs', False):
         st.markdown("---")
-        st.markdown("**📖 Reference Images Preview**")
+        st.markdown("**Reference Images Preview**")
         
         # Show in grid
         cols_per_row = 4
@@ -182,7 +182,7 @@ def main():
         st.markdown("---")
         
         # Custom naming section
-        st.subheader("🏷️ Set Download Name")
+        st.subheader("Set Download Name")
         
         custom_name = st.text_input("Enter base name for matched images:", 
                                    value="", 
@@ -190,15 +190,15 @@ def main():
         
         # Only show process button when name is entered
         if custom_name.strip():
-            if st.button("🚀 Start Processing & Find Matches", type="primary"):
+            if st.button("Start Processing & Find Matches", type="primary"):
                 st.session_state.processing = True
                 st.session_state.custom_name = custom_name.strip()
         else:
-            st.info("💡 Enter a name above to start processing")
+            st.info("Enter a name above to start processing")
         
         # Processing and Results
         if st.session_state.get('processing', False):
-            with st.spinner("🔄 AI is analyzing images..."):
+            with st.spinner("AI is analyzing images..."):
                 # Extract query features
                 query_features = extract_features(uploaded_query)
                 
@@ -251,7 +251,7 @@ def main():
             st.markdown("---")
             
             if matched_images:
-                st.subheader(f"🎯 Found {len(matched_images)} High-Quality Matches (≥80% similarity)")
+                st.subheader(f"Found {len(matched_images)} High-Quality Matches (≥80% similarity)")
                 
                 # Show matches in a beautiful grid
                 cols_per_row = 3
@@ -273,7 +273,7 @@ def main():
                                         break
                 
                 # Download Section
-                st.subheader("📦 Download Your Matches")
+                st.subheader("Download Your Matches")
                 st.markdown("All matched images will be renamed and packaged for you!")
                 
                 # Create and offer download
@@ -282,21 +282,21 @@ def main():
                 col1, col2, col3 = st.columns([1, 2, 1])
                 with col2:
                     st.download_button(
-                        label=f"📥 Download {len(matched_images)} matches as {custom_name}_*.zip",
+                        label=f"Download {len(matched_images)} matches as {custom_name}_*.zip",
                         data=zip_data,
                         file_name=f"{custom_name}_matches_{len(matched_images)}_images.zip",
                         mime="application/zip",
                         type="primary"
                     )
                 
-                st.success(f"✅ Ready to download {len(matched_images)} high-quality matches!")
+                st.success(f"Ready to download {len(matched_images)} high-quality matches!")
                 
             else:
                 st.subheader("❌ No matches found above 80% similarity")
                 st.info("Try uploading different reference images or a different query image.")
     
     elif uploaded_query or uploaded_refs:
-        st.info("📋 Upload both query and reference images to start matching")
+        st.info("Upload both query and reference images to start matching")
 
 if __name__ == "__main__":
     if model is None:
